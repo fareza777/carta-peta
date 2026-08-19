@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../core/geo.dart';
@@ -13,6 +14,9 @@ class ContourRequest {
   final double originLocalY;
   final double stepLocal;
   final double interval;
+
+  /// Ground size of one grid sample, used by the hillshade gradient.
+  final double metresPerSample;
   final double windowOriginX;
   final double windowOriginY;
   final double windowSpan;
@@ -29,6 +33,7 @@ class ContourRequest {
     required this.originLocalY,
     required this.stepLocal,
     required this.interval,
+    this.metresPerSample = 30,
     required this.windowOriginX,
     required this.windowOriginY,
     required this.windowSpan,
@@ -50,9 +55,68 @@ double chooseInterval(double relief, double preferred) {
   return steps.last;
 }
 
-/// Top-level entry point for `compute`. Returns contour polylines encoded with
-/// the same codec the map cache uses, so nothing custom crosses the isolate
-/// boundary.
+/// Top-level entry point for `compute`. Traces contours and shades the relief
+/// in one pass over the grid, returning both as plain typed data so nothing
+/// custom crosses the isolate boundary.
+Map<String, dynamic> buildTerrainToBytes(ContourRequest req) => {
+      'contours': buildContoursToBytes(req),
+      'shade': buildHillshade(req),
+      'w': req.width,
+      'h': req.height,
+      'ox': req.originLocalX,
+      'oy': req.originLocalY,
+      'step': req.stepLocal,
+    };
+
+/// Classic Horn hillshade: sun at 315 degrees, 45 degrees up. Output is RGBA
+/// centred on mid grey so it can be composited with an overlay blend, which
+/// darkens slopes on pale paper and lifts them on dark paper without either
+/// turning to mud.
+Uint8List buildHillshade(ContourRequest req) {
+  final w = req.width;
+  final h = req.height;
+  final grid = req.grid;
+  final out = Uint8List(w * h * 4);
+
+  // Ground size of one sample, needed so slope is a real gradient and not an
+  // arbitrary number that changes with zoom.
+  final metres = req.metresPerSample <= 0 ? 30.0 : req.metresPerSample;
+  const azimuth = 315.0 * math.pi / 180.0;
+  const zenith = 45.0 * math.pi / 180.0;
+  final cosZenith = math.cos(zenith);
+  final sinZenith = math.sin(zenith);
+
+  double at(int x, int y) => grid[y.clamp(0, h - 1) * w + x.clamp(0, w - 1)];
+
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      final a = at(x - 1, y - 1), b = at(x, y - 1), c = at(x + 1, y - 1);
+      final d = at(x - 1, y), f = at(x + 1, y);
+      final g = at(x - 1, y + 1), i = at(x, y + 1), j = at(x + 1, y + 1);
+
+      final dzdx = ((c + 2 * f + j) - (a + 2 * d + g)) / (8 * metres);
+      final dzdy = ((g + 2 * i + j) - (a + 2 * b + c)) / (8 * metres);
+
+      final slope = math.atan(math.sqrt(dzdx * dzdx + dzdy * dzdy));
+      final aspect = math.atan2(dzdy, -dzdx);
+      var shade = cosZenith * math.cos(slope) +
+          sinZenith * math.sin(slope) * math.cos(azimuth - aspect);
+      shade = shade.clamp(0.0, 1.0);
+
+      // Flat ground sits at cos(zenith); rebase it to neutral grey so the
+      // overlay blend leaves plains untouched.
+      final value = (128 + (shade - cosZenith) * 300).clamp(0.0, 255.0).toInt();
+      final o = (y * w + x) * 4;
+      out[o] = value;
+      out[o + 1] = value;
+      out[o + 2] = value;
+      out[o + 3] = 255;
+    }
+  }
+  return out;
+}
+
+/// Contours only. Kept separate so it can be exercised on its own.
 Uint8List buildContoursToBytes(ContourRequest req) {
   final features = <MapFeature>[];
   final w = req.width;
@@ -123,7 +187,7 @@ Uint8List buildContoursToBytes(ContourRequest req) {
 
 /// Edge ids: horizontal edges get even ids, vertical edges odd ones, so a
 /// crossing point shared by two neighbouring cells resolves to one key.
-int _hEdge(int x, int y, int w) => ((y * w + x) << 1);
+int _hEdge(int x, int y, int w) => (y * w + x) << 1;
 int _vEdge(int x, int y, int w) => ((y * w + x) << 1) | 1;
 
 void _cell(_LevelBuilder b, int x, int y, double tl, double tr, double br,

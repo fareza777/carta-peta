@@ -101,6 +101,168 @@ class LayerStyle {
       );
 }
 
+
+/// A photographic grade applied to the finished poster.
+///
+/// Everything here is expressible as one 4x5 colour matrix, so the whole grade
+/// costs a single `saveLayer` and no shader.
+class ColorGrade {
+  const ColorGrade({
+    this.contrast = 1.0,
+    this.saturation = 1.0,
+    this.warmth = 0.0,
+    this.duoShadow,
+    this.duoHighlight,
+    this.duoAmount = 0.0,
+  });
+
+  /// 1 = untouched.
+  final double contrast;
+  final double saturation;
+
+  /// -1 cool, +1 warm.
+  final double warmth;
+
+  /// Luminance is remapped onto the ramp between these two colours.
+  final Color? duoShadow;
+  final Color? duoHighlight;
+  final double duoAmount;
+
+  static const ColorGrade none = ColorGrade();
+
+  bool get isIdentity =>
+      (contrast - 1).abs() < 0.001 &&
+      (saturation - 1).abs() < 0.001 &&
+      warmth.abs() < 0.001 &&
+      (duoAmount < 0.001 || duoShadow == null || duoHighlight == null);
+
+  ColorGrade copyWith({
+    double? contrast,
+    double? saturation,
+    double? warmth,
+    Color? duoShadow,
+    Color? duoHighlight,
+    double? duoAmount,
+  }) =>
+      ColorGrade(
+        contrast: contrast ?? this.contrast,
+        saturation: saturation ?? this.saturation,
+        warmth: warmth ?? this.warmth,
+        duoShadow: duoShadow ?? this.duoShadow,
+        duoHighlight: duoHighlight ?? this.duoHighlight,
+        duoAmount: duoAmount ?? this.duoAmount,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'c': contrast,
+        's': saturation,
+        'w': warmth,
+        if (duoShadow != null) 'ds': duoShadow!.toARGB32(),
+        if (duoHighlight != null) 'dh': duoHighlight!.toARGB32(),
+        'da': duoAmount,
+      };
+
+  factory ColorGrade.fromJson(Map<String, dynamic> j) => ColorGrade(
+        contrast: (j['c'] as num?)?.toDouble() ?? 1,
+        saturation: (j['s'] as num?)?.toDouble() ?? 1,
+        warmth: (j['w'] as num?)?.toDouble() ?? 0,
+        duoShadow: j['ds'] == null ? null : Color(j['ds'] as int),
+        duoHighlight: j['dh'] == null ? null : Color(j['dh'] as int),
+        duoAmount: (j['da'] as num?)?.toDouble() ?? 0,
+      );
+
+  /// Rec. 709 luminance, the same weights Skia uses for its own filters.
+  static const double _lr = 0.2126, _lg = 0.7152, _lb = 0.0722;
+
+  List<double> matrix() {
+    var m = _identity;
+    if ((saturation - 1).abs() > 0.001) m = _mul(_saturationMatrix(saturation), m);
+    if (warmth.abs() > 0.001) m = _mul(_warmthMatrix(warmth), m);
+    if ((contrast - 1).abs() > 0.001) m = _mul(_contrastMatrix(contrast), m);
+    final shadow = duoShadow, highlight = duoHighlight;
+    if (duoAmount > 0.001 && shadow != null && highlight != null) {
+      m = _mul(_duotoneMatrix(shadow, highlight, duoAmount.clamp(0.0, 1.0)), m);
+    }
+    return m;
+  }
+
+  static const List<double> _identity = [
+    1, 0, 0, 0, 0, //
+    0, 1, 0, 0, 0, //
+    0, 0, 1, 0, 0, //
+    0, 0, 0, 1, 0, //
+  ];
+
+  static List<double> _saturationMatrix(double s) {
+    final ir = (1 - s) * _lr, ig = (1 - s) * _lg, ib = (1 - s) * _lb;
+    return [
+      ir + s, ig, ib, 0, 0, //
+      ir, ig + s, ib, 0, 0, //
+      ir, ig, ib + s, 0, 0, //
+      0, 0, 0, 1, 0, //
+    ];
+  }
+
+  static List<double> _contrastMatrix(double c) {
+    final t = (0.5 - 0.5 * c) * 255.0;
+    return [
+      c, 0, 0, 0, t, //
+      0, c, 0, 0, t, //
+      0, 0, c, 0, t, //
+      0, 0, 0, 1, 0, //
+    ];
+  }
+
+  static List<double> _warmthMatrix(double w) {
+    final r = 1 + 0.16 * w;
+    final b = 1 - 0.16 * w;
+    return [
+      r, 0, 0, 0, 0, //
+      0, 1, 0, 0, 0, //
+      0, 0, b, 0, 0, //
+      0, 0, 0, 1, 0, //
+    ];
+  }
+
+  /// out = shadow + luminance * (highlight - shadow), mixed in by [amount].
+  static List<double> _duotoneMatrix(Color shadow, Color highlight, double amount) {
+    final from = [shadow.r, shadow.g, shadow.b];
+    final to = [highlight.r, highlight.g, highlight.b];
+
+    final duo = <double>[];
+    for (var channel = 0; channel < 3; channel++) {
+      // Coefficients are unitless multipliers on 0..255 inputs, so the span
+      // stays normalised while only the offset is scaled to byte range.
+      final base = from[channel] * 255.0;
+      final span = to[channel] - from[channel];
+      duo.addAll([span * _lr, span * _lg, span * _lb, 0, base]);
+    }
+    duo.addAll([0, 0, 0, 1, 0]);
+
+    final out = <double>[];
+    for (var i = 0; i < 20; i++) {
+      out.add(_identity[i] * (1 - amount) + duo[i] * amount);
+    }
+    return out;
+  }
+
+  /// Composes two 4x5 affine colour matrices: apply [b] first, then [a].
+  static List<double> _mul(List<double> a, List<double> b) {
+    final out = List<double>.filled(20, 0);
+    for (var row = 0; row < 4; row++) {
+      for (var col = 0; col < 5; col++) {
+        var sum = 0.0;
+        for (var k = 0; k < 4; k++) {
+          sum += a[row * 5 + k] * b[k * 5 + col];
+        }
+        if (col == 4) sum += a[row * 5 + 4];
+        out[row * 5 + col] = sum;
+      }
+    }
+    return out;
+  }
+}
+
 /// The full look of a poster's map area.
 class MapStyle {
   final String id;
@@ -124,6 +286,17 @@ class MapStyle {
 
   /// Contour spacing in metres; 0 turns terrain contours off.
   final double contourInterval;
+
+  /// Strength of the shaded-relief underlay, 0 = off.
+  final double reliefStrength;
+
+  /// Map label typography. Null colour falls back to the accent.
+  final double labelScale;
+  final Color? labelColor;
+  final bool showLabels;
+
+  /// Photographic grade applied to the finished poster.
+  final ColorGrade grade;
 
   final Color routeColor;
   final double routeWidth;
@@ -150,6 +323,11 @@ class MapStyle {
     this.heightShade = 0.0,
     this.heightColor,
     this.contourInterval = 0,
+    this.reliefStrength = 0,
+    this.labelScale = 1.0,
+    this.labelColor,
+    this.showLabels = false,
+    this.grade = ColorGrade.none,
     this.routeColor = const Color(0xFFFF4D4D),
     this.routeWidth = 3.2,
     this.routeGlow = 0.5,
@@ -175,6 +353,11 @@ class MapStyle {
     double? heightShade,
     Color? heightColor,
     double? contourInterval,
+    double? reliefStrength,
+    double? labelScale,
+    Color? labelColor,
+    bool? showLabels,
+    ColorGrade? grade,
     Color? routeColor,
     double? routeWidth,
     double? routeGlow,
@@ -194,6 +377,11 @@ class MapStyle {
         heightShade: heightShade ?? this.heightShade,
         heightColor: heightColor ?? this.heightColor,
         contourInterval: contourInterval ?? this.contourInterval,
+        reliefStrength: reliefStrength ?? this.reliefStrength,
+        labelScale: labelScale ?? this.labelScale,
+        labelColor: labelColor ?? this.labelColor,
+        showLabels: showLabels ?? this.showLabels,
+        grade: grade ?? this.grade,
         routeColor: routeColor ?? this.routeColor,
         routeWidth: routeWidth ?? this.routeWidth,
         routeGlow: routeGlow ?? this.routeGlow,
@@ -219,6 +407,11 @@ class MapStyle {
         'hs': heightShade,
         if (heightColor != null) 'hc': heightColor!.toARGB32(),
         'ci': contourInterval,
+        'rs': reliefStrength,
+        'lsc': labelScale,
+        if (labelColor != null) 'lc': labelColor!.toARGB32(),
+        'sl': showLabels,
+        'gd': grade.toJson(),
         'rc': routeColor.toARGB32(),
         'rw': routeWidth,
         'rg': routeGlow,
@@ -247,6 +440,13 @@ class MapStyle {
       heightShade: (j['hs'] as num?)?.toDouble() ?? 0.0,
       heightColor: j['hc'] == null ? null : Color(j['hc'] as int),
       contourInterval: (j['ci'] as num?)?.toDouble() ?? 0,
+      reliefStrength: (j['rs'] as num?)?.toDouble() ?? 0,
+      labelScale: (j['lsc'] as num?)?.toDouble() ?? 1,
+      labelColor: j['lc'] == null ? null : Color(j['lc'] as int),
+      showLabels: j['sl'] as bool? ?? false,
+      grade: j['gd'] == null
+          ? ColorGrade.none
+          : ColorGrade.fromJson(Map<String, dynamic>.from(j['gd'] as Map)),
       routeColor: Color(j['rc'] as int? ?? 0xFFFF4D4D),
       routeWidth: (j['rw'] as num?)?.toDouble() ?? 3.2,
       routeGlow: (j['rg'] as num?)?.toDouble() ?? 0.5,

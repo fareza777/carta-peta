@@ -11,6 +11,7 @@ import '../model/map_style.dart';
 import '../model/place.dart';
 import '../model/poster_config.dart';
 import '../model/route_track.dart';
+import '../model/terrain_relief.dart';
 import 'grain.dart';
 import 'path_cache.dart';
 import 'poster_text.dart';
@@ -24,6 +25,7 @@ class PosterScene {
     this.paths,
     this.route,
     this.place,
+    this.relief,
     this.zoom = 1.0,
     this.pan = Offset.zero,
     this.showAttribution = true,
@@ -35,6 +37,7 @@ class PosterScene {
   final FormatSpec format;
   final RouteTrack? route;
   final PlaceRef? place;
+  final TerrainRelief? relief;
   final double zoom;
   final Offset pan;
   final bool showAttribution;
@@ -64,6 +67,19 @@ class PosterScene {
 /// preview, the preset thumbnails and the 4K/8K export.
 class PosterRenderer {
   static void paint(ui.Canvas canvas, Size size, PosterScene scene) {
+    final grade = scene.style.grade;
+    final graded = !grade.isIdentity;
+    if (graded) {
+      canvas.saveLayer(
+        Offset.zero & size,
+        Paint()..colorFilter = ColorFilter.matrix(grade.matrix()),
+      );
+    }
+    _paintUngraded(canvas, size, scene);
+    if (graded) canvas.restore();
+  }
+
+  static void _paintUngraded(ui.Canvas canvas, Size size, PosterScene scene) {
     final s = math.min(size.width, size.height);
     final unit = s / 1000.0;
     final full = Offset.zero & size;
@@ -163,10 +179,45 @@ class PosterRenderer {
     return math.pow(2600.0 / span, 0.30).toDouble().clamp(0.55, 1.85);
   }
 
+  /// Identifies one rendered view of the map. Styles are immutable and rebuilt
+  /// on every edit, so identity is a sound and very cheap signature; poster
+  /// text edits leave the style object untouched and hit the cache.
+  static String _mapKey(PosterScene scene, Rect mapRect) => [
+        identityHashCode(scene.style),
+        identityHashCode(scene.relief),
+        identityHashCode(scene.route),
+        scene.zoom.toStringAsFixed(4),
+        scene.pan.dx.toStringAsFixed(4),
+        scene.pan.dy.toStringAsFixed(4),
+        mapRect.left.toStringAsFixed(2),
+        mapRect.top.toStringAsFixed(2),
+        mapRect.width.toStringAsFixed(2),
+        mapRect.height.toStringAsFixed(2),
+      ].join('|');
+
   static void _paintMap(ui.Canvas canvas, Rect mapRect, PosterScene scene) {
     final cache = scene.paths;
     if (cache == null || !cache.hasAnything) return;
 
+    final key = _mapKey(scene, mapRect);
+    final cached = cache.cachedMap(key);
+    if (cached != null) {
+      canvas.drawPicture(cached);
+      return;
+    }
+
+    final recorder = ui.PictureRecorder();
+    final into = ui.Canvas(recorder, mapRect);
+    _drawMap(into, mapRect, scene);
+    final picture = recorder.endRecording();
+    canvas.drawPicture(picture);
+    // A Picture is a display list, not a bitmap, so holding one costs almost
+    // nothing regardless of the export resolution it was recorded for.
+    cache.storeMap(key, picture);
+  }
+
+  static void _drawMap(ui.Canvas canvas, Rect mapRect, PosterScene scene) {
+    final cache = scene.paths!;
     final scale = math.max(mapRect.width, mapRect.height) * scene.zoom;
     if (scale <= 0) return;
     final dx = mapRect.center.dx - scale * 0.5 + scene.pan.dx * scale;
@@ -188,8 +239,12 @@ class PosterRenderer {
       ..isAntiAlias = true
       ..color = c.withValues(alpha: c.a * opacity);
 
-    Paint strokePaint(Color c, double width, double opacity,
-            {StrokeCap cap = StrokeCap.round}) =>
+    Paint strokePaint(
+      Color c,
+      double width,
+      double opacity, {
+      StrokeCap cap = StrokeCap.round,
+    }) =>
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = width
@@ -220,8 +275,12 @@ class PosterRenderer {
       if (ls.outlined && ls.width > 0) {
         canvas.drawPath(
           path,
-          strokePaint(ls.stroke, px(ls.width * style.lineScale), ls.opacity,
-              cap: StrokeCap.butt),
+          strokePaint(
+            ls.stroke,
+            px(ls.width * style.lineScale),
+            ls.opacity,
+            cap: StrokeCap.butt,
+          ),
         );
       }
     }
@@ -239,6 +298,29 @@ class PosterRenderer {
       canvas.drawPath(path, strokePaint(ls.stroke, width, ls.opacity));
     }
 
+    void paintRelief() {
+      final relief = scene.relief;
+      if (relief == null || style.reliefStrength <= 0.01) return;
+      // Mid grey is neutral under an overlay blend, exactly like the grain, so
+      // hillshading reads correctly on light and dark styles alike.
+      final k = (1.0 - style.reliefStrength.clamp(0.0, 1.0)) * 0.95;
+      canvas.drawImageRect(
+        relief.image,
+        Rect.fromLTWH(
+          0,
+          0,
+          relief.image.width.toDouble(),
+          relief.image.height.toDouble(),
+        ),
+        relief.localRect,
+        Paint()
+          ..filterQuality = FilterQuality.medium
+          ..colorFilter =
+              ColorFilter.mode(Color.fromRGBO(128, 128, 128, k), BlendMode.srcOver)
+          ..blendMode = BlendMode.overlay,
+      );
+    }
+
     void paintContours() {
       final ls = style.layer(LayerId.contour);
       if (!ls.enabled || ls.opacity <= 0.01) return;
@@ -246,10 +328,14 @@ class PosterRenderer {
       final width = px(ls.width * style.lineScale);
       if (width <= 0) return;
       canvas.drawPath(
-          cache.contour(index: false), strokePaint(ls.stroke, width, ls.opacity * 0.7));
+        cache.contour(index: false),
+        strokePaint(ls.stroke, width, ls.opacity * 0.7),
+      );
       // Every fifth line is drawn heavier, the way printed topo sheets do it.
       canvas.drawPath(
-          cache.contour(index: true), strokePaint(ls.stroke, width * 2.1, ls.opacity));
+        cache.contour(index: true),
+        strokePaint(ls.stroke, width * 2.1, ls.opacity),
+      );
     }
 
     void paintBuildings() {
@@ -272,8 +358,12 @@ class PosterRenderer {
       if (ls.outlined && ls.width > 0) {
         canvas.drawPath(
           cache.solid(LayerId.building),
-          strokePaint(ls.stroke, px(ls.width * style.lineScale), ls.opacity,
-              cap: StrokeCap.butt),
+          strokePaint(
+            ls.stroke,
+            px(ls.width * style.lineScale),
+            ls.opacity,
+            cap: StrokeCap.butt,
+          ),
         );
       }
     }
@@ -282,11 +372,16 @@ class PosterRenderer {
       final path = cache.road(id, band);
       if (ls.dash != null && ls.dash!.length >= 2) {
         return cache.dashed(
-            'r${id.index}.${band.index}', path, px(ls.dash![0]), px(ls.dash![1]));
+          'r${id.index}.${band.index}',
+          path,
+          px(ls.dash![0]),
+          px(ls.dash![1]),
+        );
       }
       return path;
     }
 
+    paintRelief();
     paintArea(LayerId.green);
     paintArea(LayerId.sand);
     paintContours();
@@ -312,8 +407,12 @@ class PosterRenderer {
           if (width <= 0) continue;
           canvas.drawPath(
             roadPath(id, band, ls),
-            strokePaint(casing, width, ls.opacity,
-                cap: band == RoadBand.bridge ? StrokeCap.butt : StrokeCap.round),
+            strokePaint(
+              casing,
+              width,
+              ls.opacity,
+              cap: band == RoadBand.bridge ? StrokeCap.butt : StrokeCap.round,
+            ),
           );
         }
       }
@@ -357,6 +456,12 @@ class PosterRenderer {
     }
 
     canvas.restore();
+
+    // Labels live outside the map transform: text must not be scaled by three
+    // thousand along with the geometry.
+    if (style.showLabels) {
+      _paintLabels(canvas, scene, mapRect, dx, dy, scale, strokeUnit);
+    }
   }
 
   static void _paintRouteEnds(ui.Canvas canvas, PosterScene scene, double w) {
@@ -377,6 +482,98 @@ class PosterRenderer {
     }
   }
 
+  // ----------------------------------------------------------------- labels
+
+  static const int _maxLabels = 26;
+
+  static void _paintLabels(
+    ui.Canvas canvas,
+    PosterScene scene,
+    Rect mapRect,
+    double dx,
+    double dy,
+    double scale,
+    double strokeUnit,
+  ) {
+    final cache = scene.paths;
+    if (cache == null) return;
+    final style = scene.style;
+    final colour = style.labelColor ?? style.textColor;
+    final size = 17 * style.labelScale * mapRect.shortestSide / 1000.0;
+    if (size < 4) return;
+
+    final placed = <Rect>[];
+    var drawn = 0;
+
+    for (final label in cache.labels) {
+      if (drawn >= _maxLabels) break;
+      final centre = Offset(dx + label.x * scale, dy + label.y * scale);
+      if (!mapRect.contains(centre)) continue;
+
+      final area = label.area;
+      final text = area ? label.text.toUpperCase() : label.text;
+      final painter = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: TextStyle(
+            fontFamily: scene.poster.bodyFont,
+            fontSize: area ? size * 0.92 : size,
+            letterSpacing: size * (area ? 0.16 : 0.04),
+            fontWeight: area ? FontWeight.w600 : FontWeight.w400,
+            color: colour,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+
+      // Only letter something the label actually fits along.
+      final room = label.span * scale;
+      if (room < painter.width * 1.15) continue;
+
+      final box = Rect.fromCenter(
+        center: centre,
+        width: painter.width + size * 0.6,
+        height: painter.height + size * 0.35,
+      );
+      if (!mapRect.contains(box.topLeft) || !mapRect.contains(box.bottomRight)) {
+        continue;
+      }
+      if (placed.any((r) => r.overlaps(box))) continue;
+      placed.add(box);
+      drawn++;
+
+      canvas.save();
+      canvas.translate(centre.dx, centre.dy);
+      if (label.angle.abs() > 0.01) canvas.rotate(label.angle);
+      final origin = Offset(-painter.width / 2, -painter.height / 2);
+
+      // A halo in the background colour keeps names readable over dense
+      // geometry without needing a filled plate behind them.
+      final halo = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: TextStyle(
+            fontFamily: scene.poster.bodyFont,
+            fontSize: area ? size * 0.92 : size,
+            letterSpacing: size * (area ? 0.16 : 0.04),
+            fontWeight: area ? FontWeight.w600 : FontWeight.w400,
+            foreground: Paint()
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = strokeUnit * 2.2
+              ..strokeJoin = StrokeJoin.round
+              ..color = style.background.withValues(alpha: 0.8),
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout();
+      halo.paint(canvas, origin);
+      painter.paint(canvas, origin);
+      canvas.restore();
+    }
+  }
+
   // ------------------------------------------------------------ decoration
 
   static Path _shapePath(ShapeMask shape, Rect rect, double s, Rect full) {
@@ -393,20 +590,30 @@ class PosterRenderer {
       case ShapeMask.arch:
         final r = rect.width / 2;
         if (rect.height <= r * 1.05) {
-          return Path()..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(s * 0.035)));
+          return Path()
+            ..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(s * 0.035)));
         }
         return Path()
           ..moveTo(rect.left, rect.bottom)
           ..lineTo(rect.left, rect.top + r)
-          ..arcTo(Rect.fromLTWH(rect.left, rect.top, rect.width, rect.width), math.pi,
-              math.pi, false)
+          ..arcTo(
+            Rect.fromLTWH(rect.left, rect.top, rect.width, rect.width),
+            math.pi,
+            math.pi,
+            false,
+          )
           ..lineTo(rect.right, rect.bottom)
           ..close();
     }
   }
 
   static void _paintFrame(
-      ui.Canvas canvas, PosterScene scene, Rect mapRect, double s, Rect full) {
+    ui.Canvas canvas,
+    PosterScene scene,
+    Rect mapRect,
+    double s,
+    Rect full,
+  ) {
     final f = scene.poster.frame;
     if (f == FrameStyle.none) return;
     final colour = scene.style.accentColor;
@@ -425,14 +632,20 @@ class PosterRenderer {
       case FrameStyle.doubleLine:
         canvas.drawPath(_shapePath(shape, mapRect, s, full), stroke(s * 0.0026, 0.7));
         canvas.drawPath(
-            _shapePath(shape, mapRect.deflate(s * 0.014), s, full), stroke(s * 0.0014, 0.45));
+          _shapePath(shape, mapRect.deflate(s * 0.014), s, full),
+          stroke(s * 0.0014, 0.45),
+        );
       case FrameStyle.inset:
         canvas.drawPath(
-            _shapePath(shape, mapRect.deflate(s * 0.028), s, full), stroke(s * 0.0022, 0.55));
+          _shapePath(shape, mapRect.deflate(s * 0.028), s, full),
+          stroke(s * 0.0022, 0.55),
+        );
       case FrameStyle.plate:
         canvas.drawPath(_shapePath(shape, mapRect, s, full), stroke(s * 0.009, 0.9));
         canvas.drawPath(
-            _shapePath(shape, mapRect.deflate(s * 0.013), s, full), stroke(s * 0.0012, 0.5));
+          _shapePath(shape, mapRect.deflate(s * 0.013), s, full),
+          stroke(s * 0.0012, 0.5),
+        );
     }
   }
 
@@ -447,7 +660,13 @@ class PosterRenderer {
   }
 
   static void _paintScrim(
-      ui.Canvas canvas, Rect full, PosterScene scene, double top, double h, double s) {
+    ui.Canvas canvas,
+    Rect full,
+    PosterScene scene,
+    double top,
+    double h,
+    double s,
+  ) {
     final fromTop = scene.poster.placement == TextPlacement.overlayTop;
     final band = Rect.fromLTRB(
       full.left,
@@ -469,20 +688,26 @@ class PosterRenderer {
     if (img == null) return;
     // One noise texel per device pixel. Real film grain gets finer relative to
     // the sheet as the print grows; it does not scale up with it.
-    final matrix = Float64List.fromList(
-        [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
+    final matrix =
+        Float64List.fromList([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
     final k = (1.0 - strength.clamp(0.0, 1.0)) * 0.94;
     canvas.drawRect(
       rect,
       Paint()
         ..shader = ui.ImageShader(img, TileMode.repeated, TileMode.repeated, matrix)
-        ..colorFilter = ColorFilter.mode(Color.fromRGBO(128, 128, 128, k), BlendMode.srcOver)
+        ..colorFilter =
+            ColorFilter.mode(Color.fromRGBO(128, 128, 128, k), BlendMode.srcOver)
         ..blendMode = BlendMode.overlay,
     );
   }
 
   static void _paintAttribution(
-      ui.Canvas canvas, PosterScene scene, Rect full, double unit, bool overlay) {
+    ui.Canvas canvas,
+    PosterScene scene,
+    Rect full,
+    double unit,
+    bool overlay,
+  ) {
     final size = math.max(6.0, unit * 11);
     final painter = TextPainter(
       text: TextSpan(

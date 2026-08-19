@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/theme.dart';
-import 'ui/home/home_screen.dart';
+import 'ui/splash_screen.dart';
 
 class CartaApp extends StatelessWidget {
   const CartaApp({super.key});
@@ -12,7 +12,7 @@ class CartaApp extends StatelessWidget {
       title: 'CARTA',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
-      home: const HomeScreen(),
+      home: const SplashScreen(),
       builder: (context, child) => MediaQuery.withNoTextScaling(child: child!),
     );
   }

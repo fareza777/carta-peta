@@ -14,6 +14,7 @@ import '../model/map_style.dart';
 import '../model/place.dart';
 import '../model/poster_config.dart';
 import '../model/route_track.dart';
+import '../model/terrain_relief.dart';
 import '../presets/format_presets.dart';
 import '../presets/style_presets.dart';
 import '../render/path_cache.dart';
@@ -24,8 +25,11 @@ enum StudioStatus { empty, loading, ready, error }
 
 enum ContourStatus { off, loading, ready, unavailable }
 
-/// The undoable part of a design.
+/// The undoable part of a design. Everything the user can change by hand
+/// belongs here, including where the map is centred and how it is framed -
+/// leaving either out makes undo restore a state that never existed.
 class _Snapshot {
+  final PlaceRef? place;
   final MapStyle style;
   final PosterConfig poster;
   final FormatSpec format;
@@ -33,8 +37,8 @@ class _Snapshot {
   final double zoom;
   final Offset pan;
   final RouteTrack? route;
-  const _Snapshot(this.style, this.poster, this.format, this.radiusMetres, this.zoom,
-      this.pan, this.route);
+  const _Snapshot(this.place, this.style, this.poster, this.format, this.radiusMetres,
+      this.zoom, this.pan, this.route);
 }
 
 class StudioState {
@@ -58,6 +62,7 @@ class StudioState {
   final bool canRedo;
   final ContourStatus contourStatus;
   final String? contourMessage;
+  final TerrainRelief? relief;
 
   StudioState({
     required this.designId,
@@ -80,6 +85,7 @@ class StudioState {
     this.canRedo = false,
     this.contourStatus = ContourStatus.off,
     this.contourMessage,
+    this.relief,
   });
 
   bool get hasArtwork => paths != null;
@@ -91,6 +97,7 @@ class StudioState {
     format: format,
     route: route,
     place: place,
+    relief: relief,
     zoom: zoom,
     pan: pan,
   );
@@ -119,6 +126,8 @@ class StudioState {
     ContourStatus? contourStatus,
     String? contourMessage,
     bool clearContourMessage = false,
+    TerrainRelief? relief,
+    bool clearRelief = false,
   }) =>
       StudioState(
         designId: designId ?? this.designId,
@@ -140,7 +149,9 @@ class StudioState {
         canUndo: canUndo ?? this.canUndo,
         canRedo: canRedo ?? this.canRedo,
         contourStatus: contourStatus ?? this.contourStatus,
-        contourMessage: clearContourMessage ? null : (contourMessage ?? this.contourMessage),
+        contourMessage:
+            clearContourMessage ? null : (contourMessage ?? this.contourMessage),
+        relief: clearRelief ? null : (relief ?? this.relief),
       );
 }
 
@@ -170,8 +181,8 @@ class StudioController extends StateNotifier<StudioState> {
 
   // ---------------------------------------------------------------- history
 
-  _Snapshot get _current => _Snapshot(state.style, state.poster, state.format,
-      state.radiusMetres, state.zoom, state.pan, state.route);
+  _Snapshot get _current => _Snapshot(state.place, state.style, state.poster,
+      state.format, state.radiusMetres, state.zoom, state.pan, state.route);
 
   /// Records the state before a change. Consecutive tweaks of the same control
   /// collapse into one entry so dragging a slider is a single undo.
@@ -190,8 +201,12 @@ class StudioController extends StateNotifier<StudioState> {
 
   void _apply(_Snapshot s) {
     _restoring = true;
-    final needsReload = s.radiusMetres != state.radiusMetres;
+    final movedTo = s.place;
+    final needsReload = s.radiusMetres != state.radiusMetres ||
+        movedTo?.centre.lat != state.place?.centre.lat ||
+        movedTo?.centre.lon != state.place?.centre.lon;
     state = state.copyWith(
+      place: s.place,
       style: s.style,
       poster: s.poster,
       format: s.format,
@@ -285,8 +300,11 @@ class StudioController extends StateNotifier<StudioState> {
         },
       );
       if (!mounted || id != _loadSeq) return;
+      state.paths?.dispose();
+      state.relief?.dispose();
       state = state.copyWith(
         paths: MapPathCache(result.data),
+        clearRelief: true,
         status: StudioStatus.ready,
         statusMessage: '',
         detail: result.detail,
@@ -322,25 +340,30 @@ class StudioController extends StateNotifier<StudioState> {
   Future<void> ensureContours() async {
     final paths = state.paths;
     if (paths == null) return;
-    if (paths.data.hasContours) {
+    if (paths.data.hasContours && state.relief != null) {
       state = state.copyWith(contourStatus: ContourStatus.ready);
       return;
     }
     final id = ++_contourSeq;
     state = state.copyWith(contourStatus: ContourStatus.loading, clearContourMessage: true);
     try {
-      final merged = await _repo.withContours(
+      final result = await _repo.withContours(
         paths.data,
         interval: state.style.contourInterval > 0 ? state.style.contourInterval : 10,
         onStatus: (msg) {
           if (mounted && id == _contourSeq) state = state.copyWith(statusMessage: msg);
         },
       );
-      if (!mounted || id != _contourSeq) return;
+      if (!mounted || id != _contourSeq) {
+        result.relief?.dispose();
+        return;
+      }
+      if (!identical(result.data, paths.data)) paths.dispose();
       state = state.copyWith(
-        paths: MapPathCache(merged),
+        paths: MapPathCache(result.data),
+        relief: result.relief,
         contourStatus:
-            merged.hasContours ? ContourStatus.ready : ContourStatus.unavailable,
+            result.data.hasContours ? ContourStatus.ready : ContourStatus.unavailable,
         statusMessage: '',
       );
     } catch (e) {
@@ -364,6 +387,19 @@ class StudioController extends StateNotifier<StudioState> {
       contourStatus: on ? state.contourStatus : ContourStatus.off,
     );
     if (on) unawaited(ensureContours());
+  }
+
+  /// Hillshading needs the same elevation download contours do, so turning it
+  /// on fetches terrain if it is not already there.
+  void setRelief(bool on) {
+    _push('relief');
+    state = state.copyWith(
+      style: state.style.copyWith(reliefStrength: on ? 0.55 : 0),
+      savedToLibrary: false,
+      canUndo: _undo.isNotEmpty,
+      canRedo: _redo.isNotEmpty,
+    );
+    if (on && state.relief == null) unawaited(ensureContours());
   }
 
   // ------------------------------------------------------------------ style
@@ -465,7 +501,15 @@ class StudioController extends StateNotifier<StudioState> {
     );
   }
 
-  void resetView() => state = state.copyWith(zoom: 1.0, pan: Offset.zero);
+  /// Called once when a pan/zoom gesture starts. Without this the view is in
+  /// the snapshot but never recorded, so undoing an unrelated colour change
+  /// would silently throw away the framing the user just set up.
+  void beginViewChange() => _push('view');
+
+  void resetView() {
+    _push('view');
+    state = state.copyWith(zoom: 1.0, pan: Offset.zero, canUndo: _undo.isNotEmpty);
+  }
 
   // ------------------------------------------------------------------ route
 
@@ -535,6 +579,13 @@ class StudioController extends StateNotifier<StudioState> {
   }
 
   void markSaved() => state = state.copyWith(savedToLibrary: true);
+
+  @override
+  void dispose() {
+    state.paths?.dispose();
+    state.relief?.dispose();
+    super.dispose();
+  }
 }
 
 final studioControllerProvider =

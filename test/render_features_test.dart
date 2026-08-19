@@ -1,8 +1,6 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flutter/painting.dart';
-
 import 'package:carta/core/geo.dart';
 import 'package:carta/model/layer.dart';
 import 'package:carta/model/map_data.dart';
@@ -13,6 +11,7 @@ import 'package:carta/presets/style_presets.dart';
 import 'package:carta/render/exporter.dart';
 import 'package:carta/render/path_cache.dart';
 import 'package:carta/render/poster_renderer.dart';
+import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _black = Color(0xFF000000);

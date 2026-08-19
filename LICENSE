@@ -1,0 +1,46 @@
+CARTA — Map Art Studio
+Copyright (c) 2026 fareza777. All rights reserved.
+
+This source code is published for reference and review. No licence to use,
+copy, modify, merge, publish, distribute, sublicense or sell copies of this
+software, or to publish an application derived from it, is granted without the
+prior written permission of the copyright holder.
+
+If you want this to be open source instead, replace this file with the licence
+of your choice (MIT and Apache-2.0 are the usual picks for a Flutter app) and
+say so in the README. Nothing in the codebase depends on the terms here.
+
+--------------------------------------------------------------------------
+Third-party components
+
+The terms below are NOT affected by the notice above. They come from upstream
+projects and apply to anyone who redistributes this software, including the
+copyright holder.
+
+Map data
+  (c) OpenStreetMap contributors, licensed under the Open Database License
+  (ODbL) v1.0 — https://www.openstreetmap.org/copyright
+  The attribution required by that licence is rendered on every poster the app
+  exports and cannot be switched off.
+
+Geocoding
+  Nominatim, operated by the OpenStreetMap Foundation, used under its usage
+  policy — https://operations.osmfoundation.org/policies/nominatim/
+
+Elevation data
+  Terrarium terrain tiles, public domain / open data, sourced from SRTM, ASTER,
+  GMTED and national datasets.
+
+Bundled typefaces — all SIL Open Font License 1.1
+  Inter                 (c) The Inter Project Authors
+  Playfair Display      (c) The Playfair Display Project Authors
+  Cormorant Garamond    (c) The Cormorant Project Authors
+  Cinzel                (c) The Cinzel Project Authors
+  Oswald                (c) The Oswald Project Authors
+  Montserrat            (c) The Montserrat Project Authors
+  Josefin Sans          (c) The Josefin Sans Project Authors
+  Bebas Neue            (c) The Bebas Neue Project Authors
+  Space Mono            (c) The Space Mono Project Authors
+
+Flutter, Dart and the packages listed in pubspec.yaml are used under their own
+licences; run `flutter pub deps` and see each package for details.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme.dart';
+import '../../../model/map_style.dart';
 import '../../../state/studio_controller.dart';
 import '../../widgets/color_picker.dart';
 import '../../widgets/common.dart';
@@ -93,6 +94,80 @@ class PalettePanel extends ConsumerWidget {
             'Buildings are tinted by their real height from OpenStreetMap. Areas '
             'where nobody has mapped heights stay flat.',
             style: TextStyle(color: Shade.textFaint, fontSize: 11.5, height: 1.4),
+          ),
+        ),
+        const SectionLabel('Colour grading'),
+        LabeledSlider(
+          label: 'Contrast',
+          value: style.grade.contrast,
+          min: 0.6,
+          max: 1.8,
+          valueLabel: style.grade.contrast.toStringAsFixed(2),
+          onChanged: (v) => controller.updateStyle(
+              style.copyWith(grade: style.grade.copyWith(contrast: v)),
+              kind: 'grade'),
+        ),
+        LabeledSlider(
+          label: 'Saturation',
+          value: style.grade.saturation,
+          min: 0,
+          max: 1.8,
+          valueLabel: style.grade.saturation.toStringAsFixed(2),
+          onChanged: (v) => controller.updateStyle(
+              style.copyWith(grade: style.grade.copyWith(saturation: v)),
+              kind: 'grade'),
+        ),
+        LabeledSlider(
+          label: 'Warmth',
+          value: style.grade.warmth,
+          min: -1,
+          max: 1,
+          valueLabel: style.grade.warmth.toStringAsFixed(2),
+          onChanged: (v) => controller.updateStyle(
+              style.copyWith(grade: style.grade.copyWith(warmth: v)),
+              kind: 'grade'),
+        ),
+        LabeledSlider(
+          label: 'Duotone',
+          value: style.grade.duoAmount,
+          min: 0,
+          max: 1,
+          valueLabel: '${(style.grade.duoAmount * 100).round()}%',
+          onChanged: (v) => controller.updateStyle(
+              style.copyWith(
+                grade: style.grade.copyWith(
+                  duoAmount: v,
+                  duoShadow: style.grade.duoShadow ?? style.background,
+                  duoHighlight: style.grade.duoHighlight ?? style.accentColor,
+                ),
+              ),
+              kind: 'grade'),
+        ),
+        if (style.grade.duoAmount > 0.01) ...[
+          _ColorRow(
+            label: 'Shadow tone',
+            color: style.grade.duoShadow ?? style.background,
+            onTap: () => pick('Shadow tone', style.grade.duoShadow ?? style.background,
+                (c) => controller.updateStyle(
+                    style.copyWith(grade: style.grade.copyWith(duoShadow: c)))),
+          ),
+          _ColorRow(
+            label: 'Highlight tone',
+            color: style.grade.duoHighlight ?? style.accentColor,
+            onTap: () => pick(
+                'Highlight tone', style.grade.duoHighlight ?? style.accentColor,
+                (c) => controller.updateStyle(
+                    style.copyWith(grade: style.grade.copyWith(duoHighlight: c)))),
+          ),
+        ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
+          child: GhostButton(
+            label: 'Reset grading',
+            icon: Icons.restart_alt,
+            onPressed: () => controller.updateStyle(
+                style.copyWith(grade: ColorGrade.none),
+                kind: 'gradeReset'),
           ),
         ),
         const SectionLabel('Route'),

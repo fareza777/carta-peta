@@ -13,7 +13,18 @@ class _Line {
   final TextPainter painter;
   final double gapBefore;
   final bool isDivider;
-  _Line(this.painter, this.gapBefore, {this.isDivider = false});
+
+  /// Elevation series for a route profile row; null for ordinary text.
+  final List<double>? profile;
+  final double profileHeight;
+
+  _Line(
+    this.painter,
+    this.gapBefore, {
+    this.isDivider = false,
+    this.profile,
+    this.profileHeight = 0,
+  });
 }
 
 /// The typographic block underneath (or over) the map.
@@ -100,6 +111,18 @@ class PosterTextBlock {
       ));
     }
 
+    // A ride or run with elevation gets its profile drawn under the title.
+    final profile = route?.elevations ?? const <double>[];
+    if (route != null && route.hasProfile) {
+      lines.add(_Line(
+        _painter('', family: poster.bodyFont, size: 1, color: colorSoft,
+            maxWidth: maxWidth, align: textAlign),
+        unit * 26,
+        profile: profile,
+        profileHeight: unit * 64 * poster.titleScale,
+      ));
+    }
+
     final meta = <String>[];
     if (poster.showCoordinates && place != null) {
       meta.add(
@@ -132,7 +155,13 @@ class PosterTextBlock {
 
     var h = 0.0;
     for (final l in lines) {
-      h += l.gapBefore + (l.isDivider ? 0 : l.painter.height);
+      if (l.isDivider) {
+        h += l.gapBefore;
+      } else if (l.profile != null) {
+        h += l.gapBefore + l.profileHeight;
+      } else {
+        h += l.gapBefore + l.painter.height;
+      }
     }
     return PosterTextBlock._(lines, h, poster.align, colorSoft, unit * 1.6);
   }
@@ -175,11 +204,65 @@ class PosterTextBlock {
     return p;
   }
 
+  /// Draws the elevation series as a filled area chart, the way a race poster
+  /// prints a stage profile.
+  void _paintProfile(
+    ui.Canvas canvas,
+    Rect area,
+    double top,
+    double maxWidth,
+    double height,
+    List<double> values,
+  ) {
+    final width = maxWidth * 0.62;
+    final left = switch (_align) {
+      PosterAlign.left => area.left,
+      PosterAlign.center => area.center.dx - width / 2,
+      PosterAlign.right => area.right - width,
+    };
+
+    var lo = values.first, hi = values.first;
+    for (final v in values) {
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    final range = (hi - lo).abs() < 1 ? 1.0 : hi - lo;
+
+    final path = Path()..moveTo(left, top + height);
+    for (var i = 0; i < values.length; i++) {
+      final x = left + width * i / (values.length - 1);
+      final y = top + height - (values[i] - lo) / range * height * 0.86;
+      path.lineTo(x, y);
+    }
+    path
+      ..lineTo(left + width, top + height)
+      ..close();
+
+    canvas.drawPath(
+      path,
+      Paint()..color = _dividerColor.withValues(alpha: 0.22),
+    );
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = _dividerWidth
+        ..strokeJoin = StrokeJoin.round
+        ..color = _dividerColor.withValues(alpha: 0.85),
+    );
+  }
+
   /// Paints the block inside [area], starting at [top].
   void paint(ui.Canvas canvas, Rect area, double top, double maxWidth) {
     var y = top;
     for (final line in _lines) {
       y += line.gapBefore;
+      final profile = line.profile;
+      if (profile != null) {
+        _paintProfile(canvas, area, y, maxWidth, line.profileHeight, profile);
+        y += line.profileHeight;
+        continue;
+      }
       if (line.isDivider) {
         final w = maxWidth * 0.16;
         final paint = Paint()

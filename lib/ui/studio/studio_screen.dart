@@ -229,6 +229,7 @@ class _StudioScreenState extends ConsumerState<StudioScreen> {
           children: [
             GestureDetector(
               onScaleStart: (_) {
+                controller.beginViewChange();
                 _startZoom = state.zoom;
                 _startPan = state.pan;
                 _accumulated = Offset.zero;

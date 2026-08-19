@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/format.dart';
+import '../core/strings.dart';
 import '../core/theme.dart';
 import '../state/library_controller.dart';
 import '../state/providers.dart';
@@ -50,7 +51,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final library = ref.watch(libraryControllerProvider);
-    final designs = library.asData?.value.length ?? 0;
+    final designs = library.designs.length;
 
     return Scaffold(
       backgroundColor: Shade.bg,
@@ -91,6 +92,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const SectionLabel('Library'),
           _Row(label: 'Saved designs', value: '$designs'),
+          _Row(label: 'Favourites', value: '${library.favouriteCount}'),
+          const SectionLabel('Language'),
+          for (final language in AppLanguage.values)
+            RadioListTile<AppLanguage>(
+              value: language,
+              // ignore: deprecated_member_use
+              groupValue: ref.watch(languageProvider),
+              // ignore: deprecated_member_use
+              onChanged: (v) {
+                if (v != null) ref.read(languageProvider.notifier).set(v);
+              },
+              activeColor: Shade.accent,
+              title: Text(language.label,
+                  style: const TextStyle(color: Shade.text, fontSize: 14.5)),
+            ),
           const SectionLabel('Data & licences'),
           const Padding(
             padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
@@ -108,7 +124,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           const SectionLabel('About'),
-          const _Row(label: 'CARTA - Map Art Studio', value: 'v1.1.0'),
+          const _Row(label: 'CARTA - Map Art Studio', value: 'v1.2.0'),
         ],
       ),
     );

@@ -11,6 +11,10 @@ class RouteTrack {
   final Duration? duration;
   final DateTime? recordedAt;
 
+  /// Downsampled elevation series, used to draw the profile on the poster.
+  /// Empty when the GPX carried no elevation.
+  final List<double> elevations;
+
   const RouteTrack({
     required this.name,
     required this.points,
@@ -18,7 +22,10 @@ class RouteTrack {
     this.ascentMetres = 0,
     this.duration,
     this.recordedAt,
+    this.elevations = const [],
   });
+
+  bool get hasProfile => elevations.length > 4;
 
   bool get isEmpty => points.length < 2;
 
@@ -60,6 +67,7 @@ class RouteTrack {
         'a': ascentMetres,
         if (duration != null) 'du': duration!.inSeconds,
         if (recordedAt != null) 'r': recordedAt!.millisecondsSinceEpoch,
+        if (elevations.isNotEmpty) 'e': elevations,
         'p': points.expand((p) => [p.lat, p.lon]).toList(),
       };
 
@@ -76,6 +84,8 @@ class RouteTrack {
       ascentMetres: (j['a'] as num?)?.toDouble() ?? 0,
       duration: j['du'] == null ? null : Duration(seconds: j['du'] as int),
       recordedAt: j['r'] == null ? null : DateTime.fromMillisecondsSinceEpoch(j['r'] as int),
+      elevations:
+          (j['e'] as List?)?.map((e) => (e as num).toDouble()).toList() ?? const [],
     );
   }
 }

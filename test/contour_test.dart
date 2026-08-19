@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
+import 'package:carta/core/geo.dart';
 import 'package:carta/data/dem/marching_squares.dart';
 import 'package:carta/data/dem/terrain_tiles.dart';
-import 'package:carta/core/geo.dart';
 import 'package:carta/model/layer.dart';
 import 'package:carta/model/map_data.dart';
 import 'package:flutter_test/flutter_test.dart';

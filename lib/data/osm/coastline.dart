@@ -227,7 +227,7 @@ class CoastlineBuilder {
   /// Appends the window corners passed while travelling clockwise from [from]
   /// to [to] along the border.
   static void _walkBorder(List<double> poly, double from, double to) {
-    var t = from;
+    final t = from;
     var target = to;
     if (target < t) target += 4.0;
     var corner = t.floorToDouble() + 1.0;

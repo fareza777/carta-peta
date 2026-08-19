@@ -4,11 +4,18 @@ import 'package:flutter/foundation.dart';
 
 import '../core/geo.dart';
 import '../model/map_data.dart';
+import '../model/terrain_relief.dart';
 import 'cache/map_cache.dart';
 import 'dem/contour_repository.dart';
 import 'osm/osm_parser.dart';
 import 'osm/overpass_client.dart';
 import 'osm/overpass_query.dart';
+
+class TerrainLoadResult {
+  const TerrainLoadResult(this.data, this.relief);
+  final MapDataSet data;
+  final TerrainRelief? relief;
+}
 
 class MapLoadResult {
   final MapDataSet data;
@@ -82,20 +89,20 @@ class MapRepository {
   /// Adds terrain contours to an already-loaded dataset. Kept separate from
   /// [load] so people who never pick a topographic look never pay for the
   /// elevation download.
-  Future<MapDataSet> withContours(
+  Future<TerrainLoadResult> withContours(
     MapDataSet data, {
     double interval = 10,
     void Function(String status)? onStatus,
   }) async {
-    if (data.hasContours) return data;
-    final features = await _contours.load(
+    final result = await _contours.load(
       bbox: data.bbox,
       window: data.window,
       preferredInterval: interval,
       onStatus: onStatus,
     );
-    if (features.isEmpty) return data;
-    return data.withExtra(features);
+    final merged =
+        data.hasContours || result.contours.isEmpty ? data : data.withExtra(result.contours);
+    return TerrainLoadResult(merged, result.relief);
   }
 
   Future<int> cacheBytes() async =>

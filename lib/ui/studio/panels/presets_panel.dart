@@ -202,6 +202,23 @@ class _PresetsPanelState extends ConsumerState<PresetsPanel> {
           value: state.style.contourInterval > 0,
           onChanged: controller.setContours,
         ),
+        ToggleRow(
+          label: 'Hillshade relief',
+          subtitle: 'Shades slopes using the elevation already downloaded',
+          value: state.style.reliefStrength > 0.01,
+          onChanged: controller.setRelief,
+        ),
+        if (state.style.reliefStrength > 0.01)
+          LabeledSlider(
+            label: 'Relief strength',
+            value: state.style.reliefStrength,
+            min: 0.05,
+            max: 1,
+            valueLabel: '${(state.style.reliefStrength * 100).round()}%',
+            onChanged: (v) => controller.updateStyle(
+                state.style.copyWith(reliefStrength: v),
+                kind: 'relief'),
+          ),
         const SectionLabel('Thickness'),
         LabeledSlider(
           label: 'Road weight',

@@ -9,6 +9,8 @@ class PrefsStore {
   static const _kRecent = 'recent_places';
   static const _kStyle = 'last_style';
   static const _kFormat = 'last_format';
+  static const _kLang = 'language';
+  static const _kOnboarded = 'onboarded_v1';
 
   Future<SharedPreferences> get _p => SharedPreferences.getInstance();
 
@@ -42,4 +44,10 @@ class PrefsStore {
 
   Future<String?> lastFormatId() async => (await _p).getString(_kFormat);
   Future<void> setLastFormatId(String id) async => (await _p).setString(_kFormat, id);
+
+  Future<String?> languageCode() async => (await _p).getString(_kLang);
+  Future<void> setLanguageCode(String code) async => (await _p).setString(_kLang, code);
+
+  Future<bool> hasOnboarded() async => (await _p).getBool(_kOnboarded) ?? false;
+  Future<void> setOnboarded() async => (await _p).setBool(_kOnboarded, true);
 }

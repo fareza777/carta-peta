@@ -53,16 +53,18 @@ Uint8List parseOverpassToBytes(OsmParseRequest req) {
 
     final height = layer == LayerId.building ? _buildingHeight(tags) : 0.0;
     final band = layer.isRoad ? _band(tags) : RoadBand.ground;
+    final name = _labelFor(layer, tags);
 
     if (type == 'way') {
       final pts = _project(raw['geometry'], window, close: area);
       if (pts == null) continue;
       if (area && pts.length < 8) continue;
-      features.add(MapFeature(layer, area, [pts], height: height, band: band));
+      features.add(
+          MapFeature(layer, area, [pts], height: height, band: band, name: name));
     } else if (type == 'relation' && area) {
       final rings = _relationRings(raw['members'], window);
       if (rings.isNotEmpty) {
-        features.add(MapFeature(layer, true, rings, height: height));
+        features.add(MapFeature(layer, true, rings, height: height, name: name));
       }
     }
   }
@@ -87,6 +89,25 @@ Uint8List parseOverpassToBytes(OsmParseRequest req) {
     features: features,
     capturedAt: DateTime.now(),
   ));
+}
+
+// ------------------------------------------------------------------- names
+
+/// Layers worth lettering. Small streets and paths would bury the artwork.
+const _labelledLayers = {
+  LayerId.roadMajor,
+  LayerId.roadMedium,
+  LayerId.green,
+  LayerId.water,
+};
+
+String? _labelFor(LayerId layer, Map<String, dynamic> tags) {
+  if (!_labelledLayers.contains(layer)) return null;
+  final raw = tags['name'];
+  if (raw is! String) return null;
+  final name = raw.trim();
+  if (name.isEmpty || name.length > 42) return null;
+  return name;
 }
 
 // ------------------------------------------------------------------ heights

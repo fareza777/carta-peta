@@ -88,6 +88,26 @@ class _TextPanelState extends ConsumerState<TextPanel> {
           label: 'Custom line',
           onChanged: (v) => controller.updatePoster(poster.copyWith(custom: v)),
         ),
+        const SectionLabel('Map labels'),
+        ToggleRow(
+          label: 'Show street & area names',
+          subtitle: 'Only names that fit are drawn; overlapping ones are dropped',
+          value: state.style.showLabels,
+          onChanged: (v) => controller.updateStyle(
+              state.style.copyWith(showLabels: v),
+              kind: 'labels'),
+        ),
+        if (state.style.showLabels)
+          LabeledSlider(
+            label: 'Label size',
+            value: state.style.labelScale,
+            min: 0.5,
+            max: 2,
+            valueLabel: '${(state.style.labelScale * 100).round()}%',
+            onChanged: (v) => controller.updateStyle(
+                state.style.copyWith(labelScale: v),
+                kind: 'labelSize'),
+          ),
         const SectionLabel('Typeface'),
         _FontStrip(
           selected: poster.titleFont,

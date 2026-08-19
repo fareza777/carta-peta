@@ -11,7 +11,7 @@ String formatDms(LatLng p, {bool compact = false}) {
 
 String _dms(double v, bool compact) {
   var deg = v.floor();
-  var minutesFull = (v - deg) * 60;
+  final minutesFull = (v - deg) * 60;
   var min = minutesFull.floor();
   var sec = ((minutesFull - min) * 60).round();
   if (sec == 60) {

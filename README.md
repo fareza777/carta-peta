@@ -15,6 +15,9 @@ OpenStreetMap, render 100% di perangkat, tanpa backend, tanpa API key, tanpa LLM
 |---|---|
 | Pencarian lokasi | Kota, alamat, atau landmark lewat Nominatim |
 | Layer terpisah | Air, taman, pasir, bangunan, rel, jalan (4 kelas), sungai, kontur terrain |
+| Hillshade | Relief berbayang dari DEM yang sama dengan kontur, tanpa unduhan tambahan |
+| Label peta | Nama jalan mengikuti arah jalannya, nama area di tengah areanya, tabrakan otomatis dilewati |
+| Colour grading | Kontras, saturasi, kehangatan, dan duotone — satu matriks warna, tanpa shader |
 | 18 preset premium | Minimal, Dark OLED, Blueprint, Vintage, Neon, Pastel, Monochrome, Luxury, Topographic, Architectural, Midnight, Sakura, Forest, Coral, Nordic, Copper, Sunset, Ink Wash |
 | Kustomisasi penuh | Warna isi & garis per layer, casing jalan, ketebalan, opacity, glow, garis putus-putus, gradient background, gradasi tinggi bangunan, grain kertas, vignette |
 | Mode poster | Judul, subjudul, koordinat (DMS/desimal), tanggal, teks bebas, 9 tipografi, rata kiri/tengah/kanan |
@@ -24,9 +27,13 @@ OpenStreetMap, render 100% di perangkat, tanpa backend, tanpa API key, tanpa LLM
 | Preview realtime | Semua perubahan langsung terlihat, pinch-zoom & geser |
 | Export | PNG hingga 4961×7016 (≈35 MP), PDF siap cetak 300 DPI, JPEG untuk berbagi |
 | Offline | Data peta yang sudah diunduh disimpan lokal; restyle & re-export tanpa internet |
-| Library lokal | Simpan desain + thumbnail, buka lagi kapan saja, favorit |
+| Library lokal | Simpan, ganti nama, duplikat, favoritkan, urutkan, dan filter desain |
 | Terrain | Garis kontur asli dari DEM publik, ditelusuri di perangkat |
-| Undo/redo | 40 langkah, tweak slider digabung jadi satu langkah |
+| Undo/redo | 40 langkah termasuk lokasi & framing, tweak slider digabung jadi satu langkah |
+| Onboarding | 4 halaman memakai engine render sungguhan lewat kota prosedural, tanpa jaringan |
+| Splash | Mark CARTA menggambar dirinya sendiri lewat `PathMetric` |
+| Dua bahasa | Inggris & Indonesia, bisa diganti di Pengaturan |
+| Lokasi saya | Buat poster dari posisi Anda sekarang |
 | Pindah lokasi | Cari & geser peta dari dalam studio tanpa kehilangan style |
 | Pengaturan | Ukuran cache offline, hapus data, atribusi & lisensi |
 
@@ -115,6 +122,30 @@ diketahui, jadi penyambungan segmen memakai kunci integer eksak — bukan
 pencocokan floating point. Interval dipilih otomatis menurut relief supaya
 dataran rendah dan lembah alpine sama-sama terbaca. Hasil diukur: Bandung radius
 5 km → 711 polyline dalam 319 ms.
+
+**Peta direkam sekali, bukan tiap ketukan.** `MapPathCache` menyimpan satu
+`ui.Picture` berisi seluruh lapisan peta, dikunci pada identitas objek style plus
+zoom/pan/rect. Mengetik judul poster tidak mengubah objek style, jadi geometri
+tidak pernah diraster ulang — sebelumnya tiap satu huruf memicu raster ulang
+semua jalan dan bangunan. `Picture` adalah display list, bukan bitmap, jadi
+menyimpannya nyaris tak berbiaya berapa pun resolusinya.
+
+**Hillshade.** Grid elevasi yang sudah diunduh untuk kontur juga dipakai untuk
+menghitung shaded relief (Horn, matahari 315 derajat, ketinggian 45 derajat) di
+isolate yang sama. Hasilnya dinormalisasi ke abu-abu netral lalu dikomposit
+dengan blend overlay — trik yang sama seperti grain — sehingga bekerja pada
+kertas terang maupun gelap tanpa jadi lumpur.
+
+**Label.** Untuk garis, label mengambil segmen terpanjang dan mengikuti sudutnya
+(selalu dibalik agar tetap tegak); untuk area, label duduk di centroid ring luar.
+Nama yang sama muncul sekali saja — instance terpanjang yang menang. Label yang
+tidak muat di sepanjang jalannya, atau bertabrakan dengan yang sudah ditempatkan,
+dilewati.
+
+**Colour grading.** Kontras, saturasi, kehangatan, dan duotone semuanya bisa
+dinyatakan sebagai satu matriks warna 4x5 affine, jadi seluruh grade cuma butuh
+satu `saveLayer` dan nol shader. Duotone memetakan luminansi ke ramp antara dua
+warna — itu transformasi affine, jadi muat di matriks yang sama.
 
 **Detail otomatis.** Radius besar otomatis menurunkan level detail (bangunan dan
 jalan setapak dilepas) supaya poster kota selebar 13 km tetap tajam dan cepat.

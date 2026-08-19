@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import '../core/geo.dart';
@@ -23,12 +24,16 @@ class MapFeature {
   /// Vertical band, used to keep flyovers above the roads they cross.
   final RoadBand band;
 
+  /// OSM `name`, kept so the renderer can letter the map.
+  final String? name;
+
   const MapFeature(
     this.layer,
     this.closed,
     this.parts, {
     this.height = 0,
     this.band = RoadBand.ground,
+    this.name,
   });
 
   int get pointCount {
@@ -117,7 +122,8 @@ class MapDataSet {
         if (keep.length >= 4) parts.add(Float32List.fromList(keep));
       }
       if (parts.isNotEmpty) {
-        out.add(MapFeature(f.layer, f.closed, parts, height: f.height, band: f.band));
+        out.add(MapFeature(f.layer, f.closed, parts,
+            height: f.height, band: f.band, name: f.name));
       }
     }
     return MapDataSet(window: window, bbox: bbox, features: out, capturedAt: capturedAt);
@@ -140,15 +146,19 @@ class MapDataSet {
 /// Compact binary encoding used for the on-device tile cache.
 class MapDataCodec {
   static const int _magic = 0x43415254; // 'CART'
+  static final Uint8List _noName = Uint8List(0);
 
-  /// v2 added per-feature height and vertical band. Bumping the version makes
-  /// older cache files decode to null, so they are simply refetched.
-  static const int _version = 2;
+  /// v2 added per-feature height and vertical band, v3 added names. Bumping
+  /// the version makes older cache files decode to null, so they are simply
+  /// refetched rather than misread.
+  static const int _version = 3;
 
   static Uint8List encode(MapDataSet data) {
     var bytes = 4 + 4 + 8 * 3 + 8 * 4 + 8 + 4;
+    final names = <Uint8List>[];
     for (final f in data.features) {
-      bytes += 1 + 1 + 1 + 4 + 4;
+      names.add(f.name == null ? _noName : utf8.encode(f.name!));
+      bytes += 1 + 1 + 1 + 4 + 2 + names.last.length + 4;
       for (final p in f.parts) {
         bytes += 4 + p.length * 4;
       }
@@ -166,16 +176,22 @@ class MapDataCodec {
     buf.setFloat64(o, data.bbox.east); o += 8;
     buf.setFloat64(o, data.capturedAt.millisecondsSinceEpoch.toDouble()); o += 8;
     buf.setUint32(o, data.features.length); o += 4;
-    for (final f in data.features) {
+    for (var i = 0; i < data.features.length; i++) {
+      final f = data.features[i];
       buf.setUint8(o, f.layer.index); o += 1;
       buf.setUint8(o, f.closed ? 1 : 0); o += 1;
       buf.setUint8(o, f.band.index); o += 1;
       buf.setFloat32(o, f.height); o += 4;
+      final name = names[i];
+      buf.setUint16(o, name.length); o += 2;
+      for (var k = 0; k < name.length; k++) {
+        buf.setUint8(o, name[k]); o += 1;
+      }
       buf.setUint32(o, f.parts.length); o += 4;
       for (final p in f.parts) {
         buf.setUint32(o, p.length); o += 4;
-        for (var i = 0; i < p.length; i++) {
-          buf.setFloat32(o, p[i]); o += 4;
+        for (var v = 0; v < p.length; v++) {
+          buf.setFloat32(o, p[v]); o += 4;
         }
       }
     }
@@ -205,6 +221,12 @@ class MapDataCodec {
         final closed = buf.getUint8(o) == 1; o += 1;
         final band = RoadBand.values[buf.getUint8(o)]; o += 1;
         final height = buf.getFloat32(o); o += 4;
+        final nameLength = buf.getUint16(o); o += 2;
+        String? name;
+        if (nameLength > 0) {
+          name = utf8.decode(raw.sublist(o, o + nameLength), allowMalformed: true);
+          o += nameLength;
+        }
         final partCount = buf.getUint32(o); o += 4;
         final parts = <Float32List>[];
         for (var j = 0; j < partCount; j++) {
@@ -215,7 +237,8 @@ class MapDataCodec {
           }
           parts.add(list);
         }
-        features.add(MapFeature(layer, closed, parts, height: height, band: band));
+        features.add(
+            MapFeature(layer, closed, parts, height: height, band: band, name: name));
       }
       return MapDataSet(
         window: MapWindow(ox, oy, sp),

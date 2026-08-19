@@ -27,8 +27,13 @@ class DesignStore {
   Future<File> _index() async =>
       File('${(await _dir()).path}${Platform.pathSeparator}$_indexName');
 
+  /// Directory that holds thumbnails, with a trailing separator so callers can
+  /// build a path without another async hop.
+  Future<String> thumbnailDirectory() async =>
+      '${(await _dir()).path}${Platform.pathSeparator}thumbs${Platform.pathSeparator}';
+
   Future<String> thumbnailPath(String fileName) async =>
-      '${(await _dir()).path}${Platform.pathSeparator}thumbs${Platform.pathSeparator}$fileName';
+      '${await thumbnailDirectory()}$fileName';
 
   Future<List<Design>> loadAll() async {
     try {
@@ -92,6 +97,56 @@ class DesignStore {
     }
   }
 
+  Future<void> rename(String id, String title) async {
+    final all = await loadAll();
+    final idx = all.indexWhere((d) => d.id == id);
+    if (idx < 0) return;
+    all[idx] = all[idx].copyWith(
+      poster: all[idx].poster.copyWith(title: title.trim()),
+    );
+    await _writeAll(all);
+  }
+
+  /// Copies a design, thumbnail included, under a fresh id.
+  Future<Design?> duplicate(String id) async {
+    final all = await loadAll();
+    final source = all.where((d) => d.id == id).firstOrNull;
+    if (source == null) return null;
+    final now = DateTime.now();
+    final newId = 'd${now.microsecondsSinceEpoch.toRadixString(36)}';
+    String? thumb;
+    if (source.thumbnail != null) {
+      try {
+        final from = File(await thumbnailPath(source.thumbnail!));
+        if (await from.exists()) {
+          thumb = '$newId.png';
+          await from.copy(await thumbnailPath(thumb));
+        }
+      } catch (_) {
+        thumb = null;
+      }
+    }
+    final copy = Design(
+      id: newId,
+      place: source.place,
+      radiusMetres: source.radiusMetres,
+      style: source.style,
+      poster: source.poster.copyWith(
+        title: '${LibraryNaming.of(source)} copy',
+      ),
+      formatId: source.formatId,
+      route: source.route,
+      zoom: source.zoom,
+      favorite: false,
+      createdAt: now,
+      updatedAt: now,
+      thumbnail: thumb,
+    );
+    all.insert(0, copy);
+    await _writeAll(all);
+    return copy;
+  }
+
   Future<Design?> toggleFavorite(String id) async {
     final all = await loadAll();
     final idx = all.indexWhere((d) => d.id == id);
@@ -101,6 +156,13 @@ class DesignStore {
     await _writeAll(all);
     return next;
   }
+}
+
+/// How a design is labelled in the library: an explicit poster title if the
+/// user set one, otherwise the place it was made from.
+class LibraryNaming {
+  static String of(Design d) =>
+      d.poster.title.trim().isNotEmpty ? d.poster.title.trim() : d.place.name;
 }
 
 extension _FirstOrNull<E> on Iterable<E> {

@@ -5,6 +5,34 @@ import 'dart:ui';
 import '../model/layer.dart';
 import '../model/map_data.dart';
 
+/// A place on the map worth lettering, resolved once per capture.
+class MapLabel {
+  const MapLabel({
+    required this.text,
+    required this.x,
+    required this.y,
+    required this.angle,
+    required this.span,
+    required this.area,
+    required this.layer,
+  });
+
+  final String text;
+
+  /// Anchor in window-local coordinates.
+  final double x;
+  final double y;
+
+  /// Baseline rotation in radians; always upright-ish.
+  final double angle;
+
+  /// Length of the road segment, or extent of the area, in local units.
+  /// The renderer uses it to drop labels that would not fit.
+  final double span;
+  final bool area;
+  final LayerId layer;
+}
+
 /// Builds and caches `Path` objects in window-local space (0..1).
 ///
 /// Painting then only needs a canvas transform, so panning, zooming and
@@ -22,6 +50,10 @@ class MapPathCache {
 
   double? _contourInterval;
   double? _tallest;
+  List<MapLabel>? _labels;
+
+  Picture? _cachedMap;
+  String? _cachedMapKey;
 
   bool get hasAnything => data.features.isNotEmpty;
 
@@ -31,8 +63,9 @@ class MapPathCache {
 
   /// One band of a road layer, so bridges can be drawn over every ground road.
   Path road(LayerId layer, RoadBand band) => _paths.putIfAbsent(
-      'r${layer.index}.${band.index}',
-      () => _build((f) => f.layer == layer && f.band == band));
+        'r${layer.index}.${band.index}',
+        () => _build((f) => f.layer == layer && f.band == band),
+      );
 
   double get tallestBuilding => _tallest ??= data.tallestBuilding;
 
@@ -54,6 +87,120 @@ class MapPathCache {
     final eased = math.pow(t, 0.6).toDouble();
     return (eased * (heightBuckets - 1)).round().clamp(0, heightBuckets - 1);
   }
+
+  // ------------------------------------------------------------- map picture
+
+  /// The recorded map layer for a given view, or null if the key moved on.
+  ///
+  /// Poster text changes far more often than geometry does — every keystroke in
+  /// the title field used to re-rasterise every street. Replaying one display
+  /// list instead costs nothing.
+  Picture? cachedMap(String key) => _cachedMapKey == key ? _cachedMap : null;
+
+  /// Which view is currently recorded, exposed so tests can assert that a
+  /// poster-text edit did not invalidate the geometry.
+  String? get mapCacheKey => _cachedMapKey;
+
+  void storeMap(String key, Picture picture) {
+    if (identical(_cachedMap, picture)) return;
+    _cachedMap?.dispose();
+    _cachedMap = picture;
+    _cachedMapKey = key;
+  }
+
+  void dispose() {
+    _cachedMap?.dispose();
+    _cachedMap = null;
+    _cachedMapKey = null;
+  }
+
+  // ------------------------------------------------------------------ labels
+
+  /// Candidate map labels, one per distinct name, biggest instance wins.
+  List<MapLabel> get labels => _labels ??= _buildLabels();
+
+  List<MapLabel> _buildLabels() {
+    final best = <String, MapLabel>{};
+    for (final f in data.features) {
+      final name = f.name;
+      if (name == null || f.parts.isEmpty) continue;
+      final label = f.closed ? _areaLabel(f, name) : _lineLabel(f, name);
+      if (label == null) continue;
+      final existing = best[name];
+      if (existing == null || label.span > existing.span) best[name] = label;
+    }
+    final list = best.values.toList()
+      ..sort((a, b) => b.span.compareTo(a.span));
+    return list;
+  }
+
+  static MapLabel? _lineLabel(MapFeature f, String name) {
+    var bestLength = 0.0;
+    var bx = 0.0, by = 0.0, angle = 0.0;
+    for (final p in f.parts) {
+      for (var i = 0; i + 3 < p.length; i += 2) {
+        final dx = p[i + 2] - p[i];
+        final dy = p[i + 3] - p[i + 1];
+        final length = math.sqrt(dx * dx + dy * dy);
+        if (length <= bestLength) continue;
+        bestLength = length;
+        bx = (p[i] + p[i + 2]) / 2;
+        by = (p[i + 1] + p[i + 3]) / 2;
+        angle = math.atan2(dy, dx);
+      }
+    }
+    if (bestLength <= 0) return null;
+    // Keep the text the right way up.
+    if (angle > math.pi / 2) {
+      angle -= math.pi;
+    } else if (angle < -math.pi / 2) {
+      angle += math.pi;
+    }
+    return MapLabel(
+      text: name,
+      x: bx,
+      y: by,
+      angle: angle,
+      span: bestLength,
+      area: false,
+      layer: f.layer,
+    );
+  }
+
+  static MapLabel? _areaLabel(MapFeature f, String name) {
+    final ring = f.parts.first;
+    if (ring.length < 6) return null;
+    var sumX = 0.0, sumY = 0.0;
+    var minX = double.infinity, minY = double.infinity;
+    var maxX = -double.infinity, maxY = -double.infinity;
+    // A closed ring repeats its first vertex; counting it twice pulls the
+    // centroid towards that corner.
+    final closed = (ring[0] - ring[ring.length - 2]).abs() < 1e-9 &&
+        (ring[1] - ring[ring.length - 1]).abs() < 1e-9;
+    final last = closed ? ring.length - 2 : ring.length;
+    final count = last ~/ 2;
+    for (var i = 0; i < last; i += 2) {
+      sumX += ring[i];
+      sumY += ring[i + 1];
+      if (ring[i] < minX) minX = ring[i];
+      if (ring[i] > maxX) maxX = ring[i];
+      if (ring[i + 1] < minY) minY = ring[i + 1];
+      if (ring[i + 1] > maxY) maxY = ring[i + 1];
+    }
+    final extent = math.min(maxX - minX, maxY - minY);
+    if (extent <= 0) return null;
+    return MapLabel(
+      text: name,
+      x: sumX / count,
+      y: sumY / count,
+      angle: 0,
+      span: extent,
+      area: true,
+      layer: f.layer,
+    );
+  }
+
+  // ---------------------------------------------------------------- contours
 
   /// Spacing between contour levels, inferred from the data.
   double get contourInterval {
