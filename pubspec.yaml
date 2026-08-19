@@ -1,0 +1,70 @@
+name: carta
+description: "CARTA — turn any place on Earth into gallery-grade map art."
+publish_to: 'none'
+version: 1.1.0+2
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.6.1
+  http: ^1.2.2
+  path_provider: ^2.1.5
+  shared_preferences: ^2.3.3
+  share_plus: ^10.1.2
+  gal: ^2.3.1
+  file_picker: ^10.3.3
+  xml: ^6.5.0
+  image: ^4.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+    - family: PlayfairDisplay
+      fonts:
+        - asset: assets/fonts/PlayfairDisplay-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/PlayfairDisplay-Bold.ttf
+          weight: 700
+    - family: CormorantGaramond
+      fonts:
+        - asset: assets/fonts/CormorantGaramond-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/CormorantGaramond-SemiBold.ttf
+          weight: 600
+    - family: Cinzel
+      fonts:
+        - asset: assets/fonts/Cinzel-Regular.ttf
+    - family: Oswald
+      fonts:
+        - asset: assets/fonts/Oswald-Regular.ttf
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/Montserrat-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Montserrat-Medium.ttf
+          weight: 500
+    - family: JosefinSans
+      fonts:
+        - asset: assets/fonts/JosefinSans-Regular.ttf
+    - family: BebasNeue
+      fonts:
+        - asset: assets/fonts/BebasNeue-Regular.ttf
+    - family: SpaceMono
+      fonts:
+        - asset: assets/fonts/SpaceMono-Regular.ttf
