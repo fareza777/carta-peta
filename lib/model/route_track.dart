@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../core/geo.dart';
@@ -49,6 +50,47 @@ class RouteTrack {
     final w = haversineMetres(LatLng(b.south, b.west), LatLng(b.south, b.east));
     final r = (h > w ? h : w) / 2;
     return (r * 1.3).clamp(400.0, 20000.0);
+  }
+
+  /// Splits the projected polyline into [count] pieces, each tagged with the
+  /// normalised elevation at that point. Drawing a few dozen coloured chunks
+  /// reads as a gradient without one draw call per GPS sample.
+  List<({Float32List points, double t})> chunks(MapWindow window,
+      {int count = 40}) {
+    final projected = project(window);
+    final total = projected.length ~/ 2;
+    if (total < 2) return const [];
+    final pieces = <({Float32List points, double t})>[];
+
+    var lo = 0.0, hi = 1.0;
+    if (hasProfile) {
+      lo = elevations.first;
+      hi = elevations.first;
+      for (final e in elevations) {
+        if (e < lo) lo = e;
+        if (e > hi) hi = e;
+      }
+      if ((hi - lo).abs() < 1) hi = lo + 1;
+    }
+
+    final per = (total / count).ceil().clamp(2, total);
+    for (var start = 0; start < total - 1; start += per) {
+      final end = math.min(total - 1, start + per);
+      final slice = Float32List(((end - start) + 1) * 2);
+      for (var i = start; i <= end; i++) {
+        slice[(i - start) * 2] = projected[i * 2];
+        slice[(i - start) * 2 + 1] = projected[i * 2 + 1];
+      }
+      var t = 0.5;
+      if (hasProfile) {
+        final index = ((start + end) / 2 / total * elevations.length)
+            .floor()
+            .clamp(0, elevations.length - 1);
+        t = ((elevations[index] - lo) / (hi - lo)).clamp(0.0, 1.0);
+      }
+      pieces.add((points: slice, t: t));
+    }
+    return pieces;
   }
 
   /// Projected polyline in window-local units.

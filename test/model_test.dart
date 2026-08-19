@@ -82,13 +82,21 @@ void main() {
       style: kStylePresets[3],
       poster: const PosterConfig(title: 'Bandung'),
       formatId: kFormats[2].id,
-      route: RouteTrack(
-        name: 'Ride',
-        points: const [LatLng(-6.91, 107.61), LatLng(-6.92, 107.62)],
-        distanceMetres: 1500,
-        ascentMetres: 40,
-        duration: const Duration(minutes: 12),
-      ),
+      routes: [
+        RouteTrack(
+          name: 'Ride',
+          points: const [LatLng(-6.91, 107.61), LatLng(-6.92, 107.62)],
+          distanceMetres: 1500,
+          ascentMetres: 40,
+          duration: const Duration(minutes: 12),
+          elevations: const [700, 720, 690, 760],
+        ),
+        const RouteTrack(
+          name: 'Walk',
+          points: [LatLng(-6.93, 107.63), LatLng(-6.94, 107.64)],
+          distanceMetres: 800,
+        ),
+      ],
       createdAt: DateTime(2024, 1, 1),
       updatedAt: DateTime(2024, 1, 2),
     );
@@ -99,8 +107,11 @@ void main() {
     expect(copy.radiusMetres, 2400);
     expect(copy.formatId, kFormats[2].id);
     expect(copy.style.id, design.style.id);
-    expect(copy.route!.points.length, 2);
-    expect(copy.route!.duration, const Duration(minutes: 12));
+    expect(copy.routes.length, 2);
+    expect(copy.routes.first.points.length, 2);
+    expect(copy.routes.first.duration, const Duration(minutes: 12));
+    expect(copy.routes.first.elevations, [700, 720, 690, 760]);
+    expect(copy.routes.last.name, 'Walk');
     expect(copy.createdAt, design.createdAt);
   });
 

@@ -148,10 +148,11 @@ class MapDataCodec {
   static const int _magic = 0x43415254; // 'CART'
   static final Uint8List _noName = Uint8List(0);
 
-  /// v2 added per-feature height and vertical band, v3 added names. Bumping
-  /// the version makes older cache files decode to null, so they are simply
+  /// v2 added per-feature height and vertical band, v3 added names, v4 added
+  /// the barrier layer (which shifts every later enum index). Bumping the
+  /// version makes older cache files decode to null, so they are simply
   /// refetched rather than misread.
-  static const int _version = 3;
+  static const int _version = 4;
 
   static Uint8List encode(MapDataSet data) {
     var bytes = 4 + 4 + 8 * 3 + 8 * 4 + 8 + 4;

@@ -7,6 +7,7 @@ enum LayerId {
   water,
   waterway,
   building,
+  barrier,
   rail,
   roadPath,
   roadMinor,
@@ -26,6 +27,7 @@ extension LayerInfo on LayerId {
         LayerId.water => 'Water',
         LayerId.waterway => 'Rivers & streams',
         LayerId.building => 'Buildings',
+        LayerId.barrier => 'Walls, fences & hedges',
         LayerId.rail => 'Railway',
         LayerId.roadPath => 'Paths & trails',
         LayerId.roadMinor => 'Small streets',
@@ -51,6 +53,18 @@ extension LayerInfo on LayerId {
 
   String get key => name;
 }
+
+/// Typical real-world width in metres, used when a poster is close enough to
+/// draw roads to scale rather than as a fixed fraction of the sheet.
+const Map<LayerId, double> kGroundWidths = {
+  LayerId.roadMajor: 16,
+  LayerId.roadMedium: 11,
+  LayerId.roadMinor: 6.5,
+  LayerId.roadPath: 2,
+  LayerId.rail: 5,
+  LayerId.barrier: 0.4,
+  LayerId.waterway: 6,
+};
 
 /// Road classes in the order they should be stacked within one band.
 const List<LayerId> kRoadOrder = [

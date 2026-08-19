@@ -1,10 +1,13 @@
+import 'dart:io';
 import 'dart:ui' as ui;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/format.dart';
 import '../../../core/theme.dart';
+import '../../../data/gpx_import.dart';
 import '../../../data/osm/overpass_query.dart';
 import '../../../model/map_data.dart';
 import '../../../model/poster_config.dart';
@@ -16,8 +19,11 @@ import '../../../render/poster_renderer.dart';
 import '../../../state/studio_controller.dart';
 import '../../widgets/common.dart';
 
+/// Capture half-widths in metres. The bottom of the range is deliberately
+/// tight: 80 m across a poster is one house and its garden.
 const _radiusSteps = <double>[
-  400, 600, 800, 1000, 1250, 1600, 2000, 2600, 3200, 4000, 5000, 6500, 8000, 10000, 13000
+  80, 120, 175, 250, 400, 600, 800, 1000, 1250, 1600, 2000, 2600, 3200, 4000,
+  5000, 6500, 8000, 10000, 13000
 ];
 
 const double _thumbWidth = 68;
@@ -86,6 +92,37 @@ class _PresetsPanelState extends ConsumerState<PresetsPanel> {
       // A failed thumbnail just falls back to a flat colour swatch.
     } finally {
       _building = false;
+    }
+  }
+
+  bool _importing = false;
+
+  /// Several tracks can share one poster, so this appends rather than replaces.
+  Future<void> _addRoute() async {
+    setState(() => _importing = true);
+    try {
+      FilePickerResult? picked;
+      try {
+        picked = await FilePicker.platform.pickFiles(
+          type: FileType.custom,
+          allowedExtensions: const ['gpx'],
+        );
+      } catch (_) {
+        picked = await FilePicker.platform.pickFiles();
+      }
+      final path = picked?.files.single.path;
+      if (path == null) return;
+      final route = parseGpx(await File(path).readAsString(), fallbackName: 'Route');
+      await ref
+          .read(studioControllerProvider.notifier)
+          .attachRoute(route, refit: false);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('GPX: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _importing = false);
     }
   }
 
@@ -195,6 +232,34 @@ class _PresetsPanelState extends ConsumerState<PresetsPanel> {
             ],
           ),
         ),
+        LabeledSlider(
+          label: 'Zoom',
+          value: state.zoom,
+          min: 0.5,
+          max: 10,
+          valueLabel: '${state.zoom.toStringAsFixed(1)}x',
+          onChanged: (v) {
+            controller.beginViewChange();
+            controller.setZoom(v);
+          },
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+          child: Row(
+            children: [
+              const Icon(Icons.straighten, size: 14, color: Shade.textFaint),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  'Showing about ${formatRadius(state.visibleSpanMetres)} across. '
+                  'Pinch the preview or drag this slider to go closer.',
+                  style: const TextStyle(
+                      color: Shade.textFaint, fontSize: 11.5, height: 1.4),
+                ),
+              ),
+            ],
+          ),
+        ),
         const SectionLabel('Terrain'),
         ToggleRow(
           label: 'Contour lines',
@@ -220,6 +285,15 @@ class _PresetsPanelState extends ConsumerState<PresetsPanel> {
                 kind: 'relief'),
           ),
         const SectionLabel('Thickness'),
+        ToggleRow(
+          label: 'Roads at true width',
+          subtitle: 'Draws every street its real width on the ground - made for '
+              'close-ups',
+          value: state.style.trueScaleRoads,
+          onChanged: (v) => controller.updateStyle(
+              state.style.copyWith(trueScaleRoads: v),
+              kind: 'trueScale'),
+        ),
         LabeledSlider(
           label: 'Road weight',
           value: state.style.lineScale,
@@ -239,13 +313,25 @@ class _PresetsPanelState extends ConsumerState<PresetsPanel> {
                   onPressed: () => controller.reload(force: true),
                 ),
               ),
-              if (state.route != null) ...[
+              const SizedBox(width: 10),
+              Expanded(
+                child: GhostButton(
+                  label: _importing
+                      ? 'Reading...'
+                      : (state.routes.isEmpty ? 'Add GPX route' : 'Add another'),
+                  icon: Icons.route_outlined,
+                  onPressed: _importing ? null : _addRoute,
+                ),
+              ),
+              if (state.routes.isNotEmpty) ...[
                 const SizedBox(width: 10),
                 Expanded(
                   child: GhostButton(
-                    label: 'Remove route',
+                    label: state.routes.length > 1
+                        ? 'Clear ${state.routes.length} routes'
+                        : 'Remove route',
                     icon: Icons.close,
-                    onPressed: controller.detachRoute,
+                    onPressed: () => controller.detachRoute(),
                   ),
                 ),
               ],

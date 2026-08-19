@@ -36,9 +36,9 @@ class _Snapshot {
   final double radiusMetres;
   final double zoom;
   final Offset pan;
-  final RouteTrack? route;
+  final List<RouteTrack> routes;
   const _Snapshot(this.place, this.style, this.poster, this.format, this.radiusMetres,
-      this.zoom, this.pan, this.route);
+      this.zoom, this.pan, this.routes);
 }
 
 class StudioState {
@@ -52,7 +52,7 @@ class StudioState {
   final MapStyle style;
   final PosterConfig poster;
   final FormatSpec format;
-  final RouteTrack? route;
+  final List<RouteTrack> routes;
   final double zoom;
   final Offset pan;
   final DetailLevel detail;
@@ -75,7 +75,7 @@ class StudioState {
     this.statusMessage = '',
     this.error,
     this.paths,
-    this.route,
+    this.routes = const [],
     this.zoom = 1.0,
     this.pan = Offset.zero,
     this.detail = DetailLevel.full,
@@ -90,12 +90,20 @@ class StudioState {
 
   bool get hasArtwork => paths != null;
 
+  /// How wide the visible map actually is on the ground, which is what the
+  /// user is really asking about when they pinch in - the capture radius stops
+  /// meaning much once you are zoomed past it.
+  double get visibleSpanMetres {
+    final ground = paths?.data.window.groundSpanMetres ?? radiusMetres * 2;
+    return ground / zoom;
+  }
+
   late final PosterScene scene = PosterScene(
     paths: paths,
     style: style,
     poster: poster,
     format: format,
-    route: route,
+    routes: routes,
     place: place,
     relief: relief,
     zoom: zoom,
@@ -114,8 +122,8 @@ class StudioState {
     MapStyle? style,
     PosterConfig? poster,
     FormatSpec? format,
-    RouteTrack? route,
-    bool clearRoute = false,
+    List<RouteTrack>? routes,
+    bool clearRoutes = false,
     double? zoom,
     Offset? pan,
     DetailLevel? detail,
@@ -140,7 +148,7 @@ class StudioState {
         style: style ?? this.style,
         poster: poster ?? this.poster,
         format: format ?? this.format,
-        route: clearRoute ? null : (route ?? this.route),
+        routes: clearRoutes ? const [] : (routes ?? this.routes),
         zoom: zoom ?? this.zoom,
         pan: pan ?? this.pan,
         detail: detail ?? this.detail,
@@ -182,7 +190,7 @@ class StudioController extends StateNotifier<StudioState> {
   // ---------------------------------------------------------------- history
 
   _Snapshot get _current => _Snapshot(state.place, state.style, state.poster,
-      state.format, state.radiusMetres, state.zoom, state.pan, state.route);
+      state.format, state.radiusMetres, state.zoom, state.pan, state.routes);
 
   /// Records the state before a change. Consecutive tweaks of the same control
   /// collapse into one entry so dragging a slider is a single undo.
@@ -213,8 +221,8 @@ class StudioController extends StateNotifier<StudioState> {
       radiusMetres: s.radiusMetres,
       zoom: s.zoom,
       pan: s.pan,
-      route: s.route,
-      clearRoute: s.route == null,
+      routes: s.routes,
+      clearRoutes: s.routes.isEmpty,
       savedToLibrary: false,
       canUndo: _undo.isNotEmpty,
       canRedo: _redo.isNotEmpty,
@@ -326,7 +334,7 @@ class StudioController extends StateNotifier<StudioState> {
   void setRadius(double metres) {
     _push('radius');
     state = state.copyWith(
-      radiusMetres: metres.clamp(250.0, 20000.0),
+      radiusMetres: metres.clamp(60.0, 20000.0),
       canUndo: _undo.isNotEmpty,
       canRedo: _redo.isNotEmpty,
     );
@@ -486,7 +494,7 @@ class StudioController extends StateNotifier<StudioState> {
       (((1 - 1 / zoom) / 2) + 0.08).clamp(0.0, 0.6);
 
   void setZoom(double zoom) {
-    final next = zoom.clamp(0.6, 4.0);
+    final next = zoom.clamp(0.5, 10.0);
     final limit = _panLimit(next);
     state = state.copyWith(
       zoom: next,
@@ -513,8 +521,15 @@ class StudioController extends StateNotifier<StudioState> {
 
   // ------------------------------------------------------------------ route
 
+  /// Adds a track. Several GPX files can share one poster, each drawn in its
+  /// own colour.
   Future<void> attachRoute(RouteTrack route, {bool refit = true}) async {
-    state = state.copyWith(route: route, savedToLibrary: false);
+    _push('route');
+    state = state.copyWith(
+      routes: [...state.routes, route],
+      savedToLibrary: false,
+      canUndo: _undo.isNotEmpty,
+    );
     if (!refit) return;
     final centre = route.centre;
     final radius = route.suggestedRadius;
@@ -534,10 +549,17 @@ class StudioController extends StateNotifier<StudioState> {
     await _load();
   }
 
-  void detachRoute() {
+  void detachRoute([int? index]) {
     _push('route');
+    final next = [...state.routes];
+    if (index == null) {
+      next.clear();
+    } else if (index >= 0 && index < next.length) {
+      next.removeAt(index);
+    }
     state = state.copyWith(
-      clearRoute: true,
+      routes: next,
+      clearRoutes: next.isEmpty,
       savedToLibrary: false,
       canUndo: _undo.isNotEmpty,
     );
@@ -554,7 +576,7 @@ class StudioController extends StateNotifier<StudioState> {
         style: state.style,
         poster: state.poster,
         formatId: state.format.id,
-        route: state.route,
+        routes: state.routes,
         zoom: state.zoom,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -569,7 +591,7 @@ class StudioController extends StateNotifier<StudioState> {
       style: design.style,
       poster: design.poster,
       format: formatById(design.formatId),
-      route: design.route,
+      routes: design.routes,
       zoom: design.zoom,
       status: StudioStatus.loading,
       statusMessage: 'Preparing...',

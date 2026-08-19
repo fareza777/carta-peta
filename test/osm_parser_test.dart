@@ -73,7 +73,7 @@ void main() {
 
   test('ignores untagged and irrelevant ways', () {
     final data = _parse([
-      _way(1, {'barrier': 'fence'}, [
+      _way(1, {'power': 'line'}, [
         [-6.21, 106.835],
         [-6.21, 106.845]
       ]),
@@ -84,6 +84,20 @@ void main() {
       ]),
     ]);
     expect(data.features, isEmpty);
+  });
+
+  test('walls and hedges are kept, other barriers are not', () {
+    final data = _parse([
+      _way(1, {'barrier': 'fence'}, [
+        [-6.21, 106.835],
+        [-6.21, 106.845]
+      ]),
+      _way(2, {'barrier': 'gate'}, [
+        [-6.212, 106.835],
+        [-6.212, 106.845]
+      ]),
+    ]);
+    expect(data.layerCounts[LayerId.barrier], 1);
   });
 
   test('area layers are closed even when the source ring is open', () {

@@ -42,7 +42,7 @@ class PosterTextBlock {
     required PosterConfig poster,
     required MapStyle style,
     required PlaceRef? place,
-    required RouteTrack? route,
+    required List<RouteTrack> routes,
     required double unit,
     required double maxWidth,
     Color? overrideColor,
@@ -112,8 +112,13 @@ class PosterTextBlock {
     }
 
     // A ride or run with elevation gets its profile drawn under the title.
-    final profile = route?.elevations ?? const <double>[];
-    if (route != null && route.hasProfile) {
+    // With several tracks the longest one stands in for the set.
+    RouteTrack? longest;
+    for (final r in routes) {
+      if (longest == null || r.distanceMetres > longest.distanceMetres) longest = r;
+    }
+    final profile = longest?.elevations ?? const <double>[];
+    if (longest != null && longest.hasProfile) {
       lines.add(_Line(
         _painter('', family: poster.bodyFont, size: 1, color: colorSoft,
             maxWidth: maxWidth, align: textAlign),
@@ -128,10 +133,20 @@ class PosterTextBlock {
       meta.add(
           poster.coordinatesAsDms ? formatDms(place.centre) : formatDecimal(place.centre));
     }
-    if (route != null && !route.isEmpty) {
-      final parts = <String>[formatDistance(route.distanceMetres)];
-      if (route.ascentMetres > 20) parts.add('${route.ascentMetres.round()} m elev');
-      if (route.duration != null) parts.add(_duration(route.duration!));
+    final tracks = routes.where((r) => !r.isEmpty).toList();
+    if (tracks.isNotEmpty) {
+      var distance = 0.0;
+      var ascent = 0.0;
+      var seconds = 0;
+      for (final r in tracks) {
+        distance += r.distanceMetres;
+        ascent += r.ascentMetres;
+        seconds += r.duration?.inSeconds ?? 0;
+      }
+      final parts = <String>[formatDistance(distance)];
+      if (ascent > 20) parts.add('${ascent.round()} m elev');
+      if (seconds > 0) parts.add(_duration(Duration(seconds: seconds)));
+      if (tracks.length > 1) parts.add('${tracks.length} tracks');
       meta.add(parts.join('   /   '));
     }
     if (poster.custom.trim().isNotEmpty) meta.add(poster.custom.trim());

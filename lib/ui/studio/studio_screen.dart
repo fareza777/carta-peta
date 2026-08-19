@@ -159,7 +159,8 @@ class _StudioScreenState extends ConsumerState<StudioScreen> {
                       ],
                     ),
                     Text(
-                      '${formatRadius(state.radiusMetres)} across  -  ${state.style.name}'
+                      '${formatRadius(state.visibleSpanMetres)} across  -  '
+                      '${state.style.name}'
                       '${state.fromCache ? '  -  offline' : ''}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

@@ -185,6 +185,21 @@ class PalettePanel extends ConsumerWidget {
           valueLabel: style.routeWidth.toStringAsFixed(1),
           onChanged: (v) => controller.updateStyle(style.copyWith(routeWidth: v)),
         ),
+        ToggleRow(
+          label: 'Colour by elevation',
+          subtitle: 'Grades a single track from low to high ground',
+          value: style.routeGradient,
+          onChanged: (v) => controller.updateStyle(
+              style.copyWith(routeGradient: v),
+              kind: 'routeGradient'),
+        ),
+        _ColorRow(
+          label: 'Second route colour',
+          color: style.routeColorEnd ?? style.accentColor,
+          onTap: () => pick('Second route colour',
+              style.routeColorEnd ?? style.accentColor,
+              (c) => controller.updateStyle(style.copyWith(routeColorEnd: c))),
+        ),
         LabeledSlider(
           label: 'Route glow',
           value: style.routeGlow,
@@ -193,7 +208,7 @@ class PalettePanel extends ConsumerWidget {
           valueLabel: '${(style.routeGlow * 100).round()}%',
           onChanged: (v) => controller.updateStyle(style.copyWith(routeGlow: v)),
         ),
-        if (state.route == null)
+        if (state.routes.isEmpty)
           const Padding(
             padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
             child: Text(

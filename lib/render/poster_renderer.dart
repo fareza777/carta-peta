@@ -23,7 +23,7 @@ class PosterScene {
     required this.poster,
     required this.format,
     this.paths,
-    this.route,
+    this.routes = const [],
     this.place,
     this.relief,
     this.zoom = 1.0,
@@ -35,7 +35,7 @@ class PosterScene {
   final MapStyle style;
   final PosterConfig poster;
   final FormatSpec format;
-  final RouteTrack? route;
+  final List<RouteTrack> routes;
   final PlaceRef? place;
   final TerrainRelief? relief;
   final double zoom;
@@ -44,22 +44,26 @@ class PosterScene {
 
   MapDataSet? get data => paths?.data;
 
-  Path? _routePath;
-  bool _routeBuilt = false;
+  List<Path>? _routePaths;
 
-  Path? get routePath {
-    if (_routeBuilt) return _routePath;
-    _routeBuilt = true;
+  /// One projected path per imported track.
+  List<Path> get routePaths {
+    final cached = _routePaths;
+    if (cached != null) return cached;
     final d = data;
-    final r = route;
-    if (d == null || r == null || r.isEmpty) return null;
-    final pts = r.project(d.window);
-    final p = Path()..moveTo(pts[0], pts[1]);
-    for (var i = 2; i < pts.length; i += 2) {
-      p.lineTo(pts[i], pts[i + 1]);
+    final out = <Path>[];
+    if (d != null) {
+      for (final r in routes) {
+        if (r.isEmpty) continue;
+        final pts = r.project(d.window);
+        final p = Path()..moveTo(pts[0], pts[1]);
+        for (var i = 2; i < pts.length; i += 2) {
+          p.lineTo(pts[i], pts[i + 1]);
+        }
+        out.add(p);
+      }
     }
-    _routePath = p;
-    return p;
+    return _routePaths = out;
   }
 }
 
@@ -106,7 +110,7 @@ class PosterRenderer {
       poster: scene.poster,
       style: scene.style,
       place: scene.place,
-      route: scene.route,
+      routes: scene.routes,
       unit: unit,
       maxWidth: textWidth,
     );
@@ -176,7 +180,10 @@ class PosterRenderer {
   static double _densityFactor(MapDataSet? data) {
     final span = data?.window.groundSpanMetres ?? 2600;
     if (span <= 1) return 1.0;
-    return math.pow(2600.0 / span, 0.30).toDouble().clamp(0.55, 1.85);
+    // The upper clamp used to stop at 1.85, which left a house-scale poster
+    // drawing hairline streets. Close-ups need proportionally heavier lines to
+    // read like a site plan.
+    return math.pow(2600.0 / span, 0.30).toDouble().clamp(0.55, 3.4);
   }
 
   /// Identifies one rendered view of the map. Styles are immutable and rebuilt
@@ -185,7 +192,7 @@ class PosterRenderer {
   static String _mapKey(PosterScene scene, Rect mapRect) => [
         identityHashCode(scene.style),
         identityHashCode(scene.relief),
-        identityHashCode(scene.route),
+        identityHashCode(scene.routes),
         scene.zoom.toStringAsFixed(4),
         scene.pan.dx.toStringAsFixed(4),
         scene.pan.dy.toStringAsFixed(4),
@@ -233,6 +240,21 @@ class PosterRenderer {
 
     // Poster units to local canvas units.
     double px(double posterUnits) => posterUnits * strokeUnit / scale;
+
+    // Local units per metre on the ground. The window is one unit wide, so
+    // this is simply the reciprocal of its ground span.
+    final ground = cache.data.window.groundSpanMetres;
+    final metre = ground > 1 ? 1.0 / ground : 0.0;
+
+    /// Width for a layer: either its real ground width or the usual fraction
+    /// of the poster.
+    double lineWidth(LayerId id, LayerStyle ls) {
+      if (style.trueScaleRoads && metre > 0) {
+        final metres = kGroundWidths[id];
+        if (metres != null) return metres * metre * style.lineScale;
+      }
+      return px(ls.width * style.lineScale);
+    }
 
     Paint fillPaint(Color c, double opacity) => Paint()
       ..style = PaintingStyle.fill
@@ -288,7 +310,7 @@ class PosterRenderer {
     void paintPlainLine(LayerId id) {
       final ls = style.layer(id);
       if (!ls.enabled || !ls.outlined || ls.opacity <= 0.01) return;
-      final width = px(ls.width * style.lineScale);
+      final width = lineWidth(id, ls);
       if (width <= 0) return;
       var path = cache.solid(id);
       if (ls.dash != null && ls.dash!.length >= 2) {
@@ -388,6 +410,7 @@ class PosterRenderer {
     paintArea(LayerId.water);
     paintPlainLine(LayerId.waterway);
     paintBuildings();
+    paintPlainLine(LayerId.barrier);
 
     // Roads go down in three passes so a flyover always sits above whatever it
     // crosses, whatever their classes. Within each pass every casing is laid
@@ -403,7 +426,9 @@ class PosterRenderer {
             continue;
           }
           final extra = band == RoadBand.bridge ? 1.7 : 1.0;
-          final width = px(ls.width * style.lineScale + 2 * ls.casingWidth * extra);
+          final width = style.trueScaleRoads && metre > 0
+              ? lineWidth(id, ls) + px(2 * ls.casingWidth * extra)
+              : px(ls.width * style.lineScale + 2 * ls.casingWidth * extra);
           if (width <= 0) continue;
           canvas.drawPath(
             roadPath(id, band, ls),
@@ -420,7 +445,7 @@ class PosterRenderer {
       for (final id in kRoadOrder) {
         final ls = style.layer(id);
         if (!ls.enabled || !ls.outlined || ls.opacity <= 0.01) continue;
-        final width = px(ls.width * style.lineScale);
+        final width = lineWidth(id, ls);
         if (width <= 0) continue;
         final path = roadPath(id, band, ls);
         bloom(path, ls, width, ls.opacity * bandOpacity);
@@ -428,32 +453,7 @@ class PosterRenderer {
       }
     }
 
-    final route = scene.routePath;
-    if (route != null) {
-      final w = style.routeWidth * strokeUnit / scale;
-      if (style.routeGlow > 0.01) {
-        canvas.drawPath(
-          route,
-          Paint()
-            ..style = PaintingStyle.stroke
-            ..strokeWidth = w * (1 + 3.2 * style.routeGlow)
-            ..strokeCap = StrokeCap.round
-            ..strokeJoin = StrokeJoin.round
-            ..color = style.routeColor.withValues(alpha: 0.4 * style.routeGlow)
-            ..maskFilter = ui.MaskFilter.blur(BlurStyle.normal, w * 2.0),
-        );
-      }
-      canvas.drawPath(
-        route,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = w
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round
-          ..color = style.routeColor,
-      );
-      _paintRouteEnds(canvas, scene, w);
-    }
+    _paintRoutes(canvas, scene, strokeUnit / scale);
 
     canvas.restore();
 
@@ -464,14 +464,82 @@ class PosterRenderer {
     }
   }
 
-  static void _paintRouteEnds(ui.Canvas canvas, PosterScene scene, double w) {
+  /// Draws every imported track. With more than one they fan out between the
+  /// route colour and its end colour so they stay tellable apart; a single
+  /// track can instead be graded along its own elevation profile.
+  static void _paintRoutes(ui.Canvas canvas, PosterScene scene, double unit) {
+    final paths = scene.routePaths;
+    if (paths.isEmpty) return;
+    final style = scene.style;
+    final data = scene.data;
+    final w = style.routeWidth * unit;
+    final endColour = style.routeColorEnd ?? style.accentColor;
+
+    Color colourFor(int index) {
+      if (paths.length == 1) return style.routeColor;
+      final t = index / (paths.length - 1);
+      return Color.lerp(style.routeColor, endColour, t) ?? style.routeColor;
+    }
+
+    Paint stroke(Color c, double width) => Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..color = c;
+
+    for (var i = 0; i < paths.length; i++) {
+      final colour = colourFor(i);
+      if (style.routeGlow > 0.01) {
+        canvas.drawPath(
+          paths[i],
+          stroke(colour.withValues(alpha: 0.4 * style.routeGlow),
+              w * (1 + 3.2 * style.routeGlow))
+            ..maskFilter = ui.MaskFilter.blur(BlurStyle.normal, w * 2.0),
+        );
+      }
+
+      final track = i < scene.routes.length ? scene.routes[i] : null;
+      final gradient = style.routeGradient &&
+          paths.length == 1 &&
+          data != null &&
+          track != null &&
+          track.hasProfile;
+
+      if (gradient) {
+        for (final chunk in track.chunks(data.window)) {
+          final pts = chunk.points;
+          if (pts.length < 4) continue;
+          final piece = Path()..moveTo(pts[0], pts[1]);
+          for (var k = 2; k < pts.length; k += 2) {
+            piece.lineTo(pts[k], pts[k + 1]);
+          }
+          canvas.drawPath(
+            piece,
+            stroke(Color.lerp(style.routeColor, endColour, chunk.t) ?? colour, w),
+          );
+        }
+      } else {
+        canvas.drawPath(paths[i], stroke(colour, w));
+      }
+
+      if (track != null) _paintRouteEnds(canvas, scene, track, colour, w);
+    }
+  }
+
+  static void _paintRouteEnds(
+    ui.Canvas canvas,
+    PosterScene scene,
+    RouteTrack r,
+    Color colour,
+    double w,
+  ) {
     final d = scene.data;
-    final r = scene.route;
-    if (d == null || r == null || r.isEmpty) return;
+    if (d == null || r.isEmpty) return;
     final pts = r.project(d.window);
     final start = Offset(pts[0], pts[1]);
     final end = Offset(pts[pts.length - 2], pts[pts.length - 1]);
-    final fill = Paint()..color = scene.style.routeColor;
+    final fill = Paint()..color = colour;
     final halo = Paint()
       ..color = scene.style.background
       ..style = PaintingStyle.stroke

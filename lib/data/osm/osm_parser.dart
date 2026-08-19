@@ -164,6 +164,9 @@ const _greenNatural = {'wood', 'scrub', 'grassland', 'heath', 'wetland'};
 const _sandNatural = {'beach', 'sand', 'dune', 'shingle'};
 const _waterways = {'river', 'stream', 'canal', 'ditch'};
 
+/// Only meaningful when the poster is close enough to see a garden.
+const _barriers = {'wall', 'fence', 'hedge', 'retaining_wall', 'city_wall'};
+
 LayerId? _classify(Map<String, dynamic> tags) {
   final building = tags['building'];
   if (building != null && building != 'no') return LayerId.building;
@@ -179,6 +182,9 @@ LayerId? _classify(Map<String, dynamic> tags) {
 
   final railway = tags['railway'] as String?;
   if (railway != null && _rails.contains(railway)) return LayerId.rail;
+
+  final barrier = tags['barrier'] as String?;
+  if (barrier != null && _barriers.contains(barrier)) return LayerId.barrier;
 
   final natural = tags['natural'] as String?;
   final landuse = tags['landuse'] as String?;

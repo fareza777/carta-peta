@@ -124,7 +124,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           const SectionLabel('About'),
-          const _Row(label: 'CARTA - Map Art Studio', value: 'v1.2.0'),
+          const _Row(label: 'CARTA - Map Art Studio', value: 'v1.3.0'),
         ],
       ),
     );

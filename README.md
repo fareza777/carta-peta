@@ -14,7 +14,7 @@ OpenStreetMap, render 100% di perangkat, tanpa backend, tanpa API key, tanpa LLM
 | Fitur | Detail |
 |---|---|
 | Pencarian lokasi | Kota, alamat, atau landmark lewat Nominatim |
-| Layer terpisah | Air, taman, pasir, bangunan, rel, jalan (4 kelas), sungai, kontur terrain |
+| Layer terpisah | Air, taman, pasir, bangunan, tembok/pagar/pagar tanaman, rel, jalan (4 kelas), sungai, kontur terrain |
 | Hillshade | Relief berbayang dari DEM yang sama dengan kontur, tanpa unduhan tambahan |
 | Label peta | Nama jalan mengikuti arah jalannya, nama area di tengah areanya, tabrakan otomatis dilewati |
 | Colour grading | Kontras, saturasi, kehangatan, dan duotone — satu matriks warna, tanpa shader |
@@ -23,8 +23,10 @@ OpenStreetMap, render 100% di perangkat, tanpa backend, tanpa API key, tanpa LLM
 | Mode poster | Judul, subjudul, koordinat (DMS/desimal), tanggal, teks bebas, 9 tipografi, rata kiri/tengah/kanan |
 | Bentuk & bingkai | Full bleed, persegi, lingkaran, rounded, arch + 5 gaya border |
 | Mode wallpaper | Rasio 9:19.5 dan 9:16, full bleed |
-| Route Art | Impor GPX (lari/sepeda/perjalanan), otomatis fit area, tampil jarak/elevasi/durasi |
+| Route Art | Beberapa GPX sekaligus, warna berbeda per trek, gradasi menurut elevasi, profil elevasi di poster |
 | Preview realtime | Semua perubahan langsung terlihat, pinch-zoom & geser |
+| Skala rumah | Tangkapan 80 m sampai 13 km, zoom sampai 10x — sekitar 16 m di layar |
+| Jalan skala asli | Opsi menggambar jalan selebar aslinya di tanah, untuk tampilan site plan |
 | Export | PNG hingga 4961×7016 (≈35 MP), PDF siap cetak 300 DPI, JPEG untuk berbagi |
 | Offline | Data peta yang sudah diunduh disimpan lokal; restyle & re-export tanpa internet |
 | Library lokal | Simpan, ganti nama, duplikat, favoritkan, urutkan, dan filter desain |
@@ -146,6 +148,16 @@ dilewati.
 dinyatakan sebagai satu matriks warna 4x5 affine, jadi seluruh grade cuma butuh
 satu `saveLayer` dan nol shader. Duotone memetakan luminansi ke ramp antara dua
 warna — itu transformasi affine, jadi muat di matriks yang sama.
+
+**Sampai skala rumah.** Radius tangkapan turun sampai 80 m dan zoom sampai 10x,
+jadi tampilan tersempit sekitar 16 m — satu rumah dan halamannya. Tiga hal harus
+ikut menyesuaikan supaya itu benar-benar berguna: `barrier` (tembok, pagar,
+pagar tanaman) hanya diminta pada detail penuh, karena tanpa itu satu petak
+terlihat kosong; batas atas faktor kerapatan garis dinaikkan dari 1,85 ke 3,4
+supaya jalan tidak jadi garis rambut; dan ada opsi **jalan skala asli** yang
+menggambar tiap kelas jalan selebar aslinya di tanah (`kGroundWidths`) alih-alih
+sebagai pecahan dari lembar poster. Presisi bukan masalah di skala ini —
+float32 lokal pada jendela 160 m berjarak sekitar 0,01 mm.
 
 **Detail otomatis.** Radius besar otomatis menurunkan level detail (bangunan dan
 jalan setapak dilepas) supaya poster kota selebar 13 km tetap tajam dan cepat.

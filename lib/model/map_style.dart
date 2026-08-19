@@ -278,6 +278,11 @@ class MapStyle {
   /// Global multiplier on every stroke width (user "thickness" slider).
   final double lineScale;
 
+  /// Draw roads at their real ground width instead of a fixed fraction of the
+  /// poster. Only makes sense once the view is tight enough that a 6 m street
+  /// is more than a hairline, so it is off by default.
+  final bool trueScaleRoads;
+
   /// How strongly buildings are tinted by their height, 0 = flat.
   final double heightShade;
 
@@ -299,6 +304,11 @@ class MapStyle {
   final ColorGrade grade;
 
   final Color routeColor;
+
+  /// Second colour for the elevation gradient and for telling multiple tracks
+  /// apart. Null falls back to the accent.
+  final Color? routeColorEnd;
+  final bool routeGradient;
   final double routeWidth;
   final double routeGlow;
 
@@ -320,6 +330,7 @@ class MapStyle {
     this.gradientAngle = 0.35,
     required this.layers,
     this.lineScale = 1.0,
+    this.trueScaleRoads = false,
     this.heightShade = 0.0,
     this.heightColor,
     this.contourInterval = 0,
@@ -329,6 +340,8 @@ class MapStyle {
     this.showLabels = false,
     this.grade = ColorGrade.none,
     this.routeColor = const Color(0xFFFF4D4D),
+    this.routeColorEnd,
+    this.routeGradient = false,
     this.routeWidth = 3.2,
     this.routeGlow = 0.5,
     required this.textColor,
@@ -350,6 +363,7 @@ class MapStyle {
     double? gradientAngle,
     Map<LayerId, LayerStyle>? layers,
     double? lineScale,
+    bool? trueScaleRoads,
     double? heightShade,
     Color? heightColor,
     double? contourInterval,
@@ -359,6 +373,8 @@ class MapStyle {
     bool? showLabels,
     ColorGrade? grade,
     Color? routeColor,
+    Color? routeColorEnd,
+    bool? routeGradient,
     double? routeWidth,
     double? routeGlow,
     Color? textColor,
@@ -374,6 +390,7 @@ class MapStyle {
         gradientAngle: gradientAngle ?? this.gradientAngle,
         layers: layers ?? this.layers,
         lineScale: lineScale ?? this.lineScale,
+        trueScaleRoads: trueScaleRoads ?? this.trueScaleRoads,
         heightShade: heightShade ?? this.heightShade,
         heightColor: heightColor ?? this.heightColor,
         contourInterval: contourInterval ?? this.contourInterval,
@@ -383,6 +400,8 @@ class MapStyle {
         showLabels: showLabels ?? this.showLabels,
         grade: grade ?? this.grade,
         routeColor: routeColor ?? this.routeColor,
+        routeColorEnd: routeColorEnd ?? this.routeColorEnd,
+        routeGradient: routeGradient ?? this.routeGradient,
         routeWidth: routeWidth ?? this.routeWidth,
         routeGlow: routeGlow ?? this.routeGlow,
         textColor: textColor ?? this.textColor,
@@ -404,6 +423,7 @@ class MapStyle {
         if (backgroundEnd != null) 'bg2': backgroundEnd!.toARGB32(),
         'ga': gradientAngle,
         'ls': lineScale,
+        'tsr': trueScaleRoads,
         'hs': heightShade,
         if (heightColor != null) 'hc': heightColor!.toARGB32(),
         'ci': contourInterval,
@@ -413,6 +433,8 @@ class MapStyle {
         'sl': showLabels,
         'gd': grade.toJson(),
         'rc': routeColor.toARGB32(),
+        if (routeColorEnd != null) 'rce': routeColorEnd!.toARGB32(),
+        'rgd': routeGradient,
         'rw': routeWidth,
         'rg': routeGlow,
         'tc': textColor.toARGB32(),
@@ -437,6 +459,7 @@ class MapStyle {
       gradientAngle: (j['ga'] as num?)?.toDouble() ?? 0.35,
       layers: layers,
       lineScale: (j['ls'] as num?)?.toDouble() ?? 1.0,
+      trueScaleRoads: j['tsr'] as bool? ?? false,
       heightShade: (j['hs'] as num?)?.toDouble() ?? 0.0,
       heightColor: j['hc'] == null ? null : Color(j['hc'] as int),
       contourInterval: (j['ci'] as num?)?.toDouble() ?? 0,
@@ -448,6 +471,8 @@ class MapStyle {
           ? ColorGrade.none
           : ColorGrade.fromJson(Map<String, dynamic>.from(j['gd'] as Map)),
       routeColor: Color(j['rc'] as int? ?? 0xFFFF4D4D),
+      routeColorEnd: j['rce'] == null ? null : Color(j['rce'] as int),
+      routeGradient: j['rgd'] as bool? ?? false,
       routeWidth: (j['rw'] as num?)?.toDouble() ?? 3.2,
       routeGlow: (j['rg'] as num?)?.toDouble() ?? 0.5,
       textColor: Color(j['tc'] as int? ?? 0xFFFFFFFF),

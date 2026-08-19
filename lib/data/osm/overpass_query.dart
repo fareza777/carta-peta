@@ -64,6 +64,11 @@ String buildOverpassQuery(BBox box, DetailLevel detail) {
   buf.writeln('  relation["natural"="wood"]($b);');
   buf.writeln('  way["natural"~"^(beach|sand|dune|shingle)\$"]($b);');
 
+  // Garden-scale detail ----------------------------------------------------
+  if (detail == DetailLevel.full) {
+    buf.writeln('  way["barrier"~"^(wall|fence|hedge|retaining_wall|city_wall)\$"]($b);');
+  }
+
   // Buildings -------------------------------------------------------------
   if (detail.includesBuildings) {
     buf.writeln('  way["building"]($b);');

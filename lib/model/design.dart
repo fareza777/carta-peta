@@ -11,7 +11,7 @@ class Design {
   final MapStyle style;
   final PosterConfig poster;
   final String formatId;
-  final RouteTrack? route;
+  final List<RouteTrack> routes;
   final double zoom;
   final bool favorite;
   final DateTime createdAt;
@@ -29,7 +29,7 @@ class Design {
     required this.formatId,
     required this.createdAt,
     required this.updatedAt,
-    this.route,
+    this.routes = const [],
     this.zoom = 1.0,
     this.favorite = false,
     this.thumbnail,
@@ -41,8 +41,8 @@ class Design {
     MapStyle? style,
     PosterConfig? poster,
     String? formatId,
-    RouteTrack? route,
-    bool clearRoute = false,
+    List<RouteTrack>? routes,
+    bool clearRoutes = false,
     double? zoom,
     bool? favorite,
     DateTime? updatedAt,
@@ -55,7 +55,7 @@ class Design {
         style: style ?? this.style,
         poster: poster ?? this.poster,
         formatId: formatId ?? this.formatId,
-        route: clearRoute ? null : (route ?? this.route),
+        routes: clearRoutes ? const [] : (routes ?? this.routes),
         zoom: zoom ?? this.zoom,
         favorite: favorite ?? this.favorite,
         createdAt: createdAt,
@@ -70,13 +70,29 @@ class Design {
         'style': style.toJson(),
         'poster': poster.toJson(),
         'fmt': formatId,
-        if (route != null) 'route': route!.toJson(),
+        if (routes.isNotEmpty) 'routes': routes.map((r) => r.toJson()).toList(),
         'z': zoom,
         'fav': favorite,
         'ca': createdAt.millisecondsSinceEpoch,
         'ua': updatedAt.millisecondsSinceEpoch,
         if (thumbnail != null) 'th': thumbnail,
       };
+
+  /// Reads the current list form, falling back to the single-route field that
+  /// designs saved before multi-track support used.
+  static List<RouteTrack> _readRoutes(Map<String, dynamic> j) {
+    final list = j['routes'];
+    if (list is List) {
+      return list
+          .map((e) => RouteTrack.fromJson(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    }
+    final single = j['route'];
+    if (single is Map) {
+      return [RouteTrack.fromJson(Map<String, dynamic>.from(single))];
+    }
+    return const [];
+  }
 
   factory Design.fromJson(Map<String, dynamic> j) => Design(
         id: j['id'] as String,
@@ -85,9 +101,7 @@ class Design {
         style: MapStyle.fromJson(Map<String, dynamic>.from(j['style'] as Map)),
         poster: PosterConfig.fromJson(Map<String, dynamic>.from(j['poster'] as Map)),
         formatId: j['fmt'] as String? ?? 'poster23',
-        route: j['route'] == null
-            ? null
-            : RouteTrack.fromJson(Map<String, dynamic>.from(j['route'] as Map)),
+        routes: _readRoutes(j),
         zoom: (j['z'] as num?)?.toDouble() ?? 1.0,
         favorite: j['fav'] as bool? ?? false,
         createdAt: DateTime.fromMillisecondsSinceEpoch(j['ca'] as int),

@@ -135,7 +135,7 @@ class DesignStore {
         title: '${LibraryNaming.of(source)} copy',
       ),
       formatId: source.formatId,
-      route: source.route,
+      routes: source.routes,
       zoom: source.zoom,
       favorite: false,
       createdAt: now,

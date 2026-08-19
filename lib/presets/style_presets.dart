@@ -45,6 +45,7 @@ Map<LayerId, LayerStyle> _layers({
   required LayerStyle medium,
   required LayerStyle major,
   required LayerStyle contour,
+  LayerStyle? barrier,
 }) =>
     {
       LayerId.green: green,
@@ -53,6 +54,10 @@ Map<LayerId, LayerStyle> _layers({
       LayerId.water: water,
       LayerId.waterway: waterway,
       LayerId.building: building,
+      // Walls and hedges only show up on very close posters, so unless a style
+      // says otherwise they borrow the footpath colour, a touch finer.
+      LayerId.barrier: barrier ??
+          path.copyWith(width: path.width * 0.85, clearDash: true, opacity: 0.9),
       LayerId.rail: rail,
       LayerId.roadPath: path,
       LayerId.roadMinor: minor,
