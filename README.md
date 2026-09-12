@@ -24,6 +24,9 @@ OpenStreetMap, render 100% di perangkat, tanpa backend, tanpa API key, tanpa LLM
 | Bentuk & bingkai | Full bleed, persegi, lingkaran, rounded, arch + 5 gaya border |
 | Mode wallpaper | Rasio 9:19.5 dan 9:16, full bleed |
 | Route Art | Beberapa GPX sekaligus, warna berbeda per trek, gradasi menurut elevasi, profil elevasi di poster |
+| Highlight wilayah | Ambil batas resmi sebuah kelurahan/desa/kecamatan dari OSM, redupkan sekelilingnya, dan jadikan namanya judul poster |
+| Rute rumah→kantor | Rute jalan sungguhan antara dua tempat (mobil/sepeda/jalan kaki) lewat OSRM publik; jarak & durasi otomatis masuk poster |
+| Home & Work tersimpan | Dua titik favorit diingat, jadi poster komute cukup dua ketukan |
 | Preview realtime | Semua perubahan langsung terlihat, pinch-zoom & geser |
 | Skala rumah | Tangkapan 80 m sampai 13 km, zoom sampai 10x — sekitar 16 m di layar |
 | Jalan skala asli | Opsi menggambar jalan selebar aslinya di tanah, untuk tampilan site plan |
@@ -38,6 +41,8 @@ OpenStreetMap, render 100% di perangkat, tanpa backend, tanpa API key, tanpa LLM
 | Lokasi saya | Buat poster dari posisi Anda sekarang |
 | Pindah lokasi | Cari & geser peta dari dalam studio tanpa kehilangan style |
 | Pengaturan | Ukuran cache offline, hapus data, atribusi & lisensi |
+| About / Rate / Share | Halaman About, tautan rating Play Store, bagikan app, kebijakan privasi |
+| Iklan | Banner di Home, interstitial setelah beberapa ekspor, rewarded untuk membuka resolusi terbesar — default memakai unit test resmi Google |
 
 ---
 
@@ -47,14 +52,18 @@ OpenStreetMap, render 100% di perangkat, tanpa backend, tanpa API key, tanpa LLM
 lib/
   core/        geo (Mercator, bbox, window), format helpers, theme
   model/       layer, map_data (+ codec biner), map_style, poster_config,
-               format_spec, place, route_track, design
+               format_spec, place, route_track, design, area_boundary,
+               terrain_relief
+  ads/         ad_config (unit id), ad_service (init, consent, interstitial,
+               rewarded), ad_banner
   data/
-    osm/       nominatim_client, overpass_query, overpass_client,
-               osm_parser (isolate), coastline
+    osm/       nominatim_client (+ lookup batas wilayah), overpass_query,
+               overpass_client, osm_parser (isolate), coastline
     dem/       terrain_tiles, marching_squares (isolate), contour_repository
+    routing/   osrm_client (rute jalan sungguhan, tanpa API key)
     cache/     map_cache (LRU di disk)
-    store/     design_store (library), prefs_store
-    gpx_import.dart
+    store/     design_store (library), prefs_store (+ Home/Work)
+    gpx_import.dart, device_location.dart
   render/      path_cache, poster_renderer, poster_text, grain, exporter,
                png_writer, pdf_writer
   presets/     style_presets, format_presets, font_presets, curated_places
@@ -159,6 +168,39 @@ menggambar tiap kelas jalan selebar aslinya di tanah (`kGroundWidths`) alih-alih
 sebagai pecahan dari lembar poster. Presisi bukan masalah di skala ini —
 float32 lokal pada jendela 160 m berjarak sekitar 0,01 mm.
 
+**Highlight wilayah.** Batas administratif diambil dari endpoint `lookup`
+Nominatim dengan `polygon_geojson=1` — hanya saat diminta, jadi pencarian biasa
+tidak pernah membayar ongkos geometri poligon. Yang disimpan cuma ring luarnya:
+sebuah highlight terbaca lebih baik sebagai satu bidang utuh daripada bidang
+berlubang. Di renderer, satu path even-odd berisi (persegi tampak + ring) dipakai
+sebagai scrim untuk meredupkan bagian luar, lalu ring yang sama digambar ulang
+sebagai outline tebal. Radius tangkapan otomatis melebar kalau batasnya lebih
+besar dari jendela saat ini, supaya outline tidak terpotong. Terverifikasi dengan
+data sungguhan: Kelurahan Tebet Barat, Jakarta — relation 7152610, 69 titik,
+1,06 × 2,13 km, radius yang disarankan 1438 m.
+
+**Catatan RT/RW.** OSM praktis tidak memetakan RT/RW. Yang ada dan rapi adalah
+kelurahan/desa, kecamatan, kota, dan provinsi — highlight bekerja untuk apa pun
+yang dikenal OSM, dan bilang terus terang kalau sebuah tempat tidak punya batas.
+
+**Rute jalan sungguhan.** `osrm_client` memakai instance OSRM publik milik
+FOSSGIS (`routing.openstreetmap.de`): gratis, tanpa akun, tanpa API key — batasan
+yang sama dengan seluruh app. Satu permintaan per perjalanan, tidak ada polling.
+Balasan `NoRoute` diterjemahkan jadi kalimat manusia, bukan exception mentah.
+Hasil ukur sungguhan Tebet → Sudirman: mobil 7,28 km / 9 menit (233 titik),
+sepeda 5,74 km / 25 menit, jalan kaki 5,45 km / 72 menit.
+
+**Iklan yang tidak merusak app.** Semua pemanggilan SDK dibungkus dan setiap
+kegagalan jadi no-op diam — tidak pernah ada exception yang sampai ke pengguna,
+dan banner tidak memakan ruang sama sekali sampai benar-benar ada iklan yang
+termuat. Interstitial hanya muncul setelah ekspor **disimpan** (bukan saat
+dibagikan, karena itu akan menimpa share sheet sistem), melewati beberapa ekspor
+pertama, dan diam beberapa menit setelahnya. Rewarded hanya membuka resolusi di
+atas 4096 px untuk sesi berjalan — semua ukuran di bawahnya gratis selamanya.
+Default-nya adalah **unit test resmi Google**; unit asli dimasukkan saat build
+lewat `--dart-define`, dan application id lewat `-PadmobAppId=`. Consent EEA/UK
+ditangani lewat UMP bawaan `google_mobile_ads`.
+
 **Detail otomatis.** Radius besar otomatis menurunkan level detail (bangunan dan
 jalan setapak dilepas) supaya poster kota selebar 13 km tetap tajam dan cepat.
 
@@ -194,6 +236,22 @@ Untuk App Bundle Play Store:
 ```bash
 flutter build appbundle --release
 ```
+
+### Memasang unit AdMob asli
+
+Tanpa flag di bawah, app memakai unit test resmi Google — aman dipakai selama
+pengembangan, dan tidak pernah menghasilkan uang. Untuk rilis:
+
+```bash
+flutter build appbundle --release \
+  -PadmobAppId=ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY \
+  --dart-define=CARTA_BANNER_UNIT=ca-app-pub-XXXXXXXXXXXXXXXX/1111111111 \
+  --dart-define=CARTA_INTERSTITIAL_UNIT=ca-app-pub-XXXXXXXXXXXXXXXX/2222222222 \
+  --dart-define=CARTA_REWARDED_UNIT=ca-app-pub-XXXXXXXXXXXXXXXX/3333333333
+```
+
+Play juga mewajibkan tautan kebijakan privasi untuk app beriklan; URL-nya ada di
+`lib/core/app_links.dart` bersama tautan Play Store dan email dukungan.
 
 ### Sebelum rilis ke Play Store
 
@@ -244,4 +302,12 @@ Application ID saat ini: `studio.carta.mapart`.
   itu butuh seluruh bitmap di memori. PNG dan PDF tidak punya batas ini.
 - Kontur butuh unduhan tile DEM sekali per lokasi; daerah yang sangat datar akan
   melaporkan bahwa tidak ada kontur yang berarti.
+- Highlight wilayah bergantung pada batas yang ada di OSM. Alamat tunggal dan
+  POI tidak punya poligon, dan app mengatakannya alih-alih menebak.
+- Rute memakai server OSRM publik bersama. Kalau sedang sibuk atau tidak ada
+  jalan yang menghubungkan (misalnya menyeberang laut dengan mode mobil), app
+  menampilkan alasannya.
+- Iklan belum pernah diuji dengan unit asli di perangkat fisik: repo ini memakai
+  unit test Google, dan memasang unit asli saat pengembangan justru berisiko
+  membuat akun AdMob disuspend.
 - Belum ada: multi-bahasa UI, tema terang untuk shell app, dan sinkronisasi cloud.

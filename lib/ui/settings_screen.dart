@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/app_links.dart';
 import '../core/format.dart';
 import '../core/strings.dart';
 import '../core/theme.dart';
 import '../state/library_controller.dart';
 import '../state/providers.dart';
+import 'about_screen.dart';
 import 'widgets/common.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -124,11 +126,60 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ),
           const SectionLabel('About'),
-          const _Row(label: 'CARTA - Map Art Studio', value: 'v1.3.0'),
+          _TapRow(
+            label: 'About ${AppLinks.appName}',
+            value: 'v${AppLinks.version}',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const AboutScreen()),
+            ),
+          ),
+          _TapRow(
+            label: 'Rate on Google Play',
+            value: 'Thank you',
+            onTap: () => openLink(context, AppLinks.playMarket,
+                fallback: AppLinks.playListing),
+          ),
+          _TapRow(
+            label: 'Share ${AppLinks.appName}',
+            value: 'Send a link',
+            onTap: shareApp,
+          ),
+          _TapRow(
+            label: 'Privacy policy',
+            value: 'Open',
+            onTap: () => openLink(context, AppLinks.privacyPolicy),
+          ),
         ],
       ),
     );
   }
+}
+
+class _TapRow extends StatelessWidget {
+  const _TapRow({required this.label, required this.value, required this.onTap});
+
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 13, 14, 13),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(label,
+                    style: const TextStyle(color: Shade.text, fontSize: 14.5)),
+              ),
+              Text(value,
+                  style: const TextStyle(color: Shade.textDim, fontSize: 13.5)),
+              const Icon(Icons.chevron_right, size: 18, color: Shade.textFaint),
+            ],
+          ),
+        ),
+      );
 }
 
 class _Row extends StatelessWidget {

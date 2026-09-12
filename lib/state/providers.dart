@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/strings.dart';
 import '../data/map_repository.dart';
 import '../data/osm/nominatim_client.dart';
+import '../data/routing/osrm_client.dart';
 import '../data/store/design_store.dart';
 import '../data/store/prefs_store.dart';
 
@@ -14,6 +15,12 @@ final mapRepositoryProvider = Provider<MapRepository>((ref) {
 
 final nominatimProvider = Provider<NominatimClient>((ref) {
   final client = NominatimClient();
+  ref.onDispose(client.close);
+  return client;
+});
+
+final routingProvider = Provider<OsrmClient>((ref) {
+  final client = OsrmClient();
   ref.onDispose(client.close);
   return client;
 });

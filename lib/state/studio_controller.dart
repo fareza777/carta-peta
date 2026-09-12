@@ -5,8 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/geo.dart';
 import '../data/map_repository.dart';
+import '../data/osm/nominatim_client.dart';
 import '../data/osm/overpass_query.dart';
+import '../data/routing/osrm_client.dart';
 import '../data/store/prefs_store.dart';
+import '../model/area_boundary.dart';
 import '../model/design.dart';
 import '../model/format_spec.dart';
 import '../model/layer.dart';
@@ -25,6 +28,8 @@ enum StudioStatus { empty, loading, ready, error }
 
 enum ContourStatus { off, loading, ready, unavailable }
 
+enum HighlightStatus { off, loading, ready, unavailable }
+
 /// The undoable part of a design. Everything the user can change by hand
 /// belongs here, including where the map is centred and how it is framed -
 /// leaving either out makes undo restore a state that never existed.
@@ -37,8 +42,9 @@ class _Snapshot {
   final double zoom;
   final Offset pan;
   final List<RouteTrack> routes;
+  final AreaBoundary? highlight;
   const _Snapshot(this.place, this.style, this.poster, this.format, this.radiusMetres,
-      this.zoom, this.pan, this.routes);
+      this.zoom, this.pan, this.routes, this.highlight);
 }
 
 class StudioState {
@@ -53,6 +59,8 @@ class StudioState {
   final PosterConfig poster;
   final FormatSpec format;
   final List<RouteTrack> routes;
+  final AreaBoundary? highlight;
+  final HighlightStatus highlightStatus;
   final double zoom;
   final Offset pan;
   final DetailLevel detail;
@@ -76,6 +84,8 @@ class StudioState {
     this.error,
     this.paths,
     this.routes = const [],
+    this.highlight,
+    this.highlightStatus = HighlightStatus.off,
     this.zoom = 1.0,
     this.pan = Offset.zero,
     this.detail = DetailLevel.full,
@@ -104,6 +114,7 @@ class StudioState {
     poster: poster,
     format: format,
     routes: routes,
+    highlight: highlight,
     place: place,
     relief: relief,
     zoom: zoom,
@@ -124,6 +135,9 @@ class StudioState {
     FormatSpec? format,
     List<RouteTrack>? routes,
     bool clearRoutes = false,
+    AreaBoundary? highlight,
+    bool clearHighlight = false,
+    HighlightStatus? highlightStatus,
     double? zoom,
     Offset? pan,
     DetailLevel? detail,
@@ -149,6 +163,8 @@ class StudioState {
         poster: poster ?? this.poster,
         format: format ?? this.format,
         routes: clearRoutes ? const [] : (routes ?? this.routes),
+        highlight: clearHighlight ? null : (highlight ?? this.highlight),
+        highlightStatus: highlightStatus ?? this.highlightStatus,
         zoom: zoom ?? this.zoom,
         pan: pan ?? this.pan,
         detail: detail ?? this.detail,
@@ -164,7 +180,7 @@ class StudioState {
 }
 
 class StudioController extends StateNotifier<StudioState> {
-  StudioController(this._repo, this._prefs)
+  StudioController(this._repo, this._prefs, this._places, this._router)
       : super(StudioState(
           designId: _newId(),
           style: defaultStyle,
@@ -174,6 +190,8 @@ class StudioController extends StateNotifier<StudioState> {
 
   final MapRepository _repo;
   final PrefsStore _prefs;
+  final NominatimClient _places;
+  final OsrmClient _router;
   int _loadSeq = 0;
   int _contourSeq = 0;
 
@@ -190,7 +208,8 @@ class StudioController extends StateNotifier<StudioState> {
   // ---------------------------------------------------------------- history
 
   _Snapshot get _current => _Snapshot(state.place, state.style, state.poster,
-      state.format, state.radiusMetres, state.zoom, state.pan, state.routes);
+      state.format, state.radiusMetres, state.zoom, state.pan, state.routes,
+      state.highlight);
 
   /// Records the state before a change. Consecutive tweaks of the same control
   /// collapse into one entry so dragging a slider is a single undo.
@@ -223,6 +242,10 @@ class StudioController extends StateNotifier<StudioState> {
       pan: s.pan,
       routes: s.routes,
       clearRoutes: s.routes.isEmpty,
+      highlight: s.highlight,
+      clearHighlight: s.highlight == null,
+      highlightStatus:
+          s.highlight == null ? HighlightStatus.off : HighlightStatus.ready,
       savedToLibrary: false,
       canUndo: _undo.isNotEmpty,
       canRedo: _redo.isNotEmpty,
@@ -519,6 +542,84 @@ class StudioController extends StateNotifier<StudioState> {
     state = state.copyWith(zoom: 1.0, pan: Offset.zero, canUndo: _undo.isNotEmpty);
   }
 
+  // -------------------------------------------------------------- highlight
+
+  /// Looks up the outline of the current place and lifts it out of the map
+  /// around it. OSM carries polygons for villages, kelurahan, districts and
+  /// cities; a street address or a POI has no outline, and that comes back as
+  /// [HighlightStatus.unavailable] rather than an error.
+  Future<void> highlightPlace([PlaceRef? target]) async {
+    final place = target ?? state.place;
+    if (place == null) return;
+    state = state.copyWith(highlightStatus: HighlightStatus.loading);
+    AreaBoundary? area;
+    try {
+      area = await _places.boundaryOf(place);
+    } on Exception {
+      area = null;
+    }
+    if (!mounted) return;
+    if (area == null || area.isEmpty) {
+      state = state.copyWith(highlightStatus: HighlightStatus.unavailable);
+      return;
+    }
+
+    _push('highlight');
+    // The captured window is sized for a search pin, not for a whole
+    // neighbourhood, so an outline that reaches past it has to widen the
+    // capture or it would be drawn clipped.
+    final needed = area.suggestedRadius;
+    final grow = needed > state.radiusMetres * 1.02;
+    final poster = state.poster.title.trim().isEmpty
+        ? state.poster.copyWith(title: area.name)
+        : state.poster;
+    state = state.copyWith(
+      highlight: area,
+      highlightStatus: HighlightStatus.ready,
+      poster: poster,
+      place: PlaceRef(
+        name: place.name,
+        context: place.context,
+        country: place.country,
+        centre: area.centre,
+        category: place.category,
+        osmType: place.osmType,
+        osmId: place.osmId,
+      ),
+      radiusMetres: grow ? needed : state.radiusMetres,
+      zoom: 1.0,
+      pan: Offset.zero,
+      savedToLibrary: false,
+      canUndo: _undo.isNotEmpty,
+      canRedo: _redo.isNotEmpty,
+    );
+    await _load();
+  }
+
+  void clearHighlight() {
+    if (state.highlight == null) {
+      state = state.copyWith(highlightStatus: HighlightStatus.off);
+      return;
+    }
+    _push('highlight');
+    state = state.copyWith(
+      clearHighlight: true,
+      highlightStatus: HighlightStatus.off,
+      savedToLibrary: false,
+      canUndo: _undo.isNotEmpty,
+    );
+  }
+
+  void setHighlightStyle({double? dim, double? tint, double? width}) =>
+      updateStyle(
+        state.style.copyWith(
+          highlightDim: dim,
+          highlightTint: tint,
+          highlightWidth: width,
+        ),
+        kind: 'highlightStyle',
+      );
+
   // ------------------------------------------------------------------ route
 
   /// Adds a track. Several GPX files can share one poster, each drawn in its
@@ -549,6 +650,57 @@ class StudioController extends StateNotifier<StudioState> {
     await _load();
   }
 
+  /// Plans the real road route between two places and draws it on the poster:
+  /// the journey itself becomes the subject, the title becomes "A to B".
+  /// Returns a message to show the user, or null when it worked.
+  Future<String?> planRoute({
+    required PlaceRef from,
+    required PlaceRef to,
+    required TravelMode mode,
+  }) async {
+    state = state.copyWith(
+      status: StudioStatus.loading,
+      statusMessage: 'Planning route...',
+      clearError: true,
+    );
+    final RouteTrack track;
+    try {
+      track = await _router.route(
+        waypoints: [from.centre, to.centre],
+        mode: mode,
+        name: '${from.name} → ${to.name}',
+      );
+    } on RoutingFailure catch (e) {
+      if (mounted) {
+        state = state.copyWith(
+          status: state.hasArtwork ? StudioStatus.ready : StudioStatus.empty,
+          statusMessage: '',
+        );
+      }
+      return e.message;
+    }
+    if (!mounted) return null;
+
+    _push('route');
+    state = state.copyWith(
+      routes: [...state.routes, track],
+      place: PlaceRef(
+        name: track.name,
+        context: to.context.isNotEmpty ? to.context : from.context,
+        country: to.country,
+        centre: track.centre,
+      ),
+      radiusMetres: track.suggestedRadius,
+      zoom: 1.0,
+      pan: Offset.zero,
+      savedToLibrary: false,
+      canUndo: _undo.isNotEmpty,
+      canRedo: _redo.isNotEmpty,
+    );
+    await _load();
+    return null;
+  }
+
   void detachRoute([int? index]) {
     _push('route');
     final next = [...state.routes];
@@ -577,6 +729,7 @@ class StudioController extends StateNotifier<StudioState> {
         poster: state.poster,
         formatId: state.format.id,
         routes: state.routes,
+        highlight: state.highlight,
         zoom: state.zoom,
         createdAt: DateTime.now(),
         updatedAt: DateTime.now(),
@@ -592,6 +745,9 @@ class StudioController extends StateNotifier<StudioState> {
       poster: design.poster,
       format: formatById(design.formatId),
       routes: design.routes,
+      highlight: design.highlight,
+      highlightStatus:
+          design.highlight == null ? HighlightStatus.off : HighlightStatus.ready,
       zoom: design.zoom,
       status: StudioStatus.loading,
       statusMessage: 'Preparing...',
@@ -614,4 +770,6 @@ final studioControllerProvider =
     StateNotifierProvider<StudioController, StudioState>((ref) => StudioController(
           ref.watch(mapRepositoryProvider),
           ref.watch(prefsStoreProvider),
+          ref.watch(nominatimProvider),
+          ref.watch(routingProvider),
         ));

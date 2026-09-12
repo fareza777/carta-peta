@@ -13,11 +13,12 @@ import 'export_sheet.dart';
 import 'panels/frame_panel.dart';
 import 'panels/layers_panel.dart';
 import 'panels/palette_panel.dart';
+import 'panels/place_panel.dart';
 import 'panels/presets_panel.dart';
 import 'panels/size_panel.dart';
 import 'panels/text_panel.dart';
 
-const _tabs = ['Looks', 'Colour', 'Layers', 'Text', 'Frame', 'Size'];
+const _tabs = ['Looks', 'Colour', 'Layers', 'Place', 'Text', 'Frame', 'Size'];
 
 class StudioScreen extends ConsumerStatefulWidget {
   const StudioScreen({super.key});
@@ -407,6 +408,7 @@ class _StudioScreenState extends ConsumerState<StudioScreen> {
                 PresetsPanel(),
                 PalettePanel(),
                 LayersPanel(),
+                PlacePanel(),
                 TextPanel(),
                 FramePanel(),
                 SizePanel(),

@@ -3,12 +3,12 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geolocator/geolocator.dart';
 
+import '../../ads/ad_banner.dart';
 import '../../core/format.dart';
-import '../../core/geo.dart';
 import '../../core/strings.dart';
 import '../../core/theme.dart';
+import '../../data/device_location.dart';
 import '../../data/gpx_import.dart';
 import '../../model/design.dart';
 import '../../model/place.dart';
@@ -64,39 +64,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _useMyLocation() async {
     final s = ref.read(stringsProvider);
     setState(() => _locating = true);
-    try {
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission == LocationPermission.denied ||
-          permission == LocationPermission.deniedForever) {
-        _toast(s.locationDenied);
-        return;
-      }
-      final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
-      );
-      final here = LatLng(position.latitude, position.longitude);
-      final resolved = await ref.read(nominatimProvider).reverse(here);
-      final place = resolved ??
-          PlaceRef(
-            name: s.useMyLocation,
-            context: formatDecimal(here),
-            country: '',
-            centre: here,
-          );
-      await _open(PlaceRef(
-        name: place.name,
-        context: place.context,
-        country: place.country,
-        centre: here,
-      ));
-    } catch (_) {
-      _toast(s.locationUnavailable);
-    } finally {
-      if (mounted) setState(() => _locating = false);
+    final found = await locateDevice(
+      ref.read(nominatimProvider),
+      fallbackName: s.useMyLocation,
+    );
+    if (!mounted) return;
+    setState(() => _locating = false);
+    final place = found.place;
+    if (place == null) {
+      _toast(found.outcome == LocationOutcome.denied
+          ? s.locationDenied
+          : s.locationUnavailable);
+      return;
     }
+    await _open(place);
   }
 
   void _toast(String message) {
@@ -173,6 +154,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ],
         ),
       ),
+      // The banner lives only on the home screen: the studio and the export
+      // sheet are where the work happens and stay free of it.
+      bottomNavigationBar: const SafeArea(top: false, child: AdBanner()),
     );
   }
 

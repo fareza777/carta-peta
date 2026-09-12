@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:carta/core/geo.dart';
+import 'package:carta/model/area_boundary.dart';
 import 'package:carta/model/design.dart';
 import 'package:carta/model/layer.dart';
 import 'package:carta/model/map_style.dart';
@@ -113,6 +114,41 @@ void main() {
     expect(copy.routes.first.elevations, [700, 720, 690, 760]);
     expect(copy.routes.last.name, 'Walk');
     expect(copy.createdAt, design.createdAt);
+  });
+
+  test('a highlighted design keeps its outline through the library', () {
+    final design = Design(
+      id: 'd2',
+      place: const PlaceRef(
+          name: 'Tebet Barat',
+          context: 'South Jakarta',
+          country: 'Indonesia',
+          centre: LatLng(-6.2337, 106.8486)),
+      radiusMetres: 1438,
+      style: kStylePresets.first,
+      poster: const PosterConfig(title: 'Tebet Barat'),
+      formatId: kFormats.first.id,
+      highlight: const AreaBoundary(name: 'Tebet Barat', rings: [
+        [
+          LatLng(-6.2433, 106.8438),
+          LatLng(-6.2433, 106.8534),
+          LatLng(-6.2241, 106.8534),
+          LatLng(-6.2241, 106.8438),
+          LatLng(-6.2433, 106.8438),
+        ]
+      ]),
+      createdAt: DateTime(2024, 2, 2),
+      updatedAt: DateTime(2024, 2, 2),
+    );
+    final copy = Design.fromJson(design.toJson());
+    expect(copy.highlight, isNotNull);
+    expect(copy.highlight!.name, 'Tebet Barat');
+    expect(copy.highlight!.rings.first, hasLength(5));
+    expect(copy.highlight!.rings.first.first.lon, closeTo(106.8438, 1e-9));
+
+    // And a design without one must not invent one.
+    expect(Design.fromJson(design.copyWith(clearHighlight: true).toJson()).highlight,
+        isNull);
   });
 
   test('format specs compute matching heights', () {

@@ -303,6 +303,19 @@ class MapStyle {
   /// Photographic grade applied to the finished poster.
   final ColorGrade grade;
 
+  /// Area highlight: how strongly the map outside the chosen area is dimmed
+  /// towards the background, 0 = off.
+  final double highlightDim;
+
+  /// Tint laid inside the area, 0 = none.
+  final double highlightTint;
+
+  /// Outline width in poster units.
+  final double highlightWidth;
+
+  /// Outline and tint colour. Null falls back to the accent.
+  final Color? highlightColor;
+
   final Color routeColor;
 
   /// Second colour for the elevation gradient and for telling multiple tracks
@@ -339,6 +352,10 @@ class MapStyle {
     this.labelColor,
     this.showLabels = false,
     this.grade = ColorGrade.none,
+    this.highlightDim = 0.55,
+    this.highlightTint = 0.12,
+    this.highlightWidth = 2.6,
+    this.highlightColor,
     this.routeColor = const Color(0xFFFF4D4D),
     this.routeColorEnd,
     this.routeGradient = false,
@@ -372,6 +389,10 @@ class MapStyle {
     Color? labelColor,
     bool? showLabels,
     ColorGrade? grade,
+    double? highlightDim,
+    double? highlightTint,
+    double? highlightWidth,
+    Color? highlightColor,
     Color? routeColor,
     Color? routeColorEnd,
     bool? routeGradient,
@@ -399,6 +420,10 @@ class MapStyle {
         labelColor: labelColor ?? this.labelColor,
         showLabels: showLabels ?? this.showLabels,
         grade: grade ?? this.grade,
+        highlightDim: highlightDim ?? this.highlightDim,
+        highlightTint: highlightTint ?? this.highlightTint,
+        highlightWidth: highlightWidth ?? this.highlightWidth,
+        highlightColor: highlightColor ?? this.highlightColor,
         routeColor: routeColor ?? this.routeColor,
         routeColorEnd: routeColorEnd ?? this.routeColorEnd,
         routeGradient: routeGradient ?? this.routeGradient,
@@ -432,6 +457,10 @@ class MapStyle {
         if (labelColor != null) 'lc': labelColor!.toARGB32(),
         'sl': showLabels,
         'gd': grade.toJson(),
+        'hd': highlightDim,
+        'ht': highlightTint,
+        'hw': highlightWidth,
+        if (highlightColor != null) 'hlc': highlightColor!.toARGB32(),
         'rc': routeColor.toARGB32(),
         if (routeColorEnd != null) 'rce': routeColorEnd!.toARGB32(),
         'rgd': routeGradient,
@@ -470,6 +499,10 @@ class MapStyle {
       grade: j['gd'] == null
           ? ColorGrade.none
           : ColorGrade.fromJson(Map<String, dynamic>.from(j['gd'] as Map)),
+      highlightDim: (j['hd'] as num?)?.toDouble() ?? 0.55,
+      highlightTint: (j['ht'] as num?)?.toDouble() ?? 0.12,
+      highlightWidth: (j['hw'] as num?)?.toDouble() ?? 2.6,
+      highlightColor: j['hlc'] == null ? null : Color(j['hlc'] as int),
       routeColor: Color(j['rc'] as int? ?? 0xFFFF4D4D),
       routeColorEnd: j['rce'] == null ? null : Color(j['rce'] as int),
       routeGradient: j['rgd'] as bool? ?? false,

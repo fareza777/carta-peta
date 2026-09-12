@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
+import '../model/area_boundary.dart';
 import '../model/format_spec.dart';
 import '../model/layer.dart';
 import '../model/map_data.dart';
@@ -24,6 +25,7 @@ class PosterScene {
     required this.format,
     this.paths,
     this.routes = const [],
+    this.highlight,
     this.place,
     this.relief,
     this.zoom = 1.0,
@@ -36,6 +38,9 @@ class PosterScene {
   final PosterConfig poster;
   final FormatSpec format;
   final List<RouteTrack> routes;
+
+  /// Area lifted out of the map around it, e.g. one neighbourhood.
+  final AreaBoundary? highlight;
   final PlaceRef? place;
   final TerrainRelief? relief;
   final double zoom;
@@ -43,6 +48,28 @@ class PosterScene {
   final bool showAttribution;
 
   MapDataSet? get data => paths?.data;
+
+  Path? _highlightPath;
+  bool _highlightBuilt = false;
+
+  /// The highlighted area as one path in window-local units, or null when
+  /// there is nothing to highlight.
+  Path? get highlightPath {
+    if (_highlightBuilt) return _highlightPath;
+    _highlightBuilt = true;
+    final area = highlight;
+    final d = data;
+    if (area == null || area.isEmpty || d == null) return null;
+    final path = Path()..fillType = PathFillType.nonZero;
+    for (final ring in area.project(d.window)) {
+      path.moveTo(ring[0], ring[1]);
+      for (var i = 2; i < ring.length; i += 2) {
+        path.lineTo(ring[i], ring[i + 1]);
+      }
+      path.close();
+    }
+    return _highlightPath = path;
+  }
 
   List<Path>? _routePaths;
 
@@ -193,6 +220,7 @@ class PosterRenderer {
         identityHashCode(scene.style),
         identityHashCode(scene.relief),
         identityHashCode(scene.routes),
+        identityHashCode(scene.highlight),
         scene.zoom.toStringAsFixed(4),
         scene.pan.dx.toStringAsFixed(4),
         scene.pan.dy.toStringAsFixed(4),
@@ -403,6 +431,41 @@ class PosterRenderer {
       return path;
     }
 
+    /// Lifts one area out of its surroundings: everything outside fades back
+    /// towards the background, the area itself keeps full contrast and gets a
+    /// bold outline. Drawn over the map but under the routes, so a journey
+    /// leaving the area is still readable end to end.
+    void paintHighlight() {
+      final ring = scene.highlightPath;
+      if (ring == null) return;
+      final colour = style.highlightColor ?? style.accentColor;
+      final dim = style.highlightDim.clamp(0.0, 1.0);
+      if (dim > 0.01) {
+        // The visible slice of window space, recovered from the transform so
+        // the scrim covers the whole frame at any zoom or pan.
+        final visible = Rect.fromLTRB(
+          (mapRect.left - dx) / scale,
+          (mapRect.top - dy) / scale,
+          (mapRect.right - dx) / scale,
+          (mapRect.bottom - dy) / scale,
+        ).inflate(0.02);
+        final outside = Path()
+          ..fillType = PathFillType.evenOdd
+          ..addRect(visible)
+          ..addPath(ring, Offset.zero);
+        canvas.drawPath(
+          outside,
+          fillPaint(style.background, 0.88 * dim),
+        );
+      }
+      final tint = style.highlightTint.clamp(0.0, 1.0);
+      if (tint > 0.01) canvas.drawPath(ring, fillPaint(colour, 0.35 * tint));
+      final width = px(style.highlightWidth * style.lineScale);
+      if (width > 0) {
+        canvas.drawPath(ring, strokePaint(colour, width, 1.0, cap: StrokeCap.butt));
+      }
+    }
+
     paintRelief();
     paintArea(LayerId.green);
     paintArea(LayerId.sand);
@@ -453,6 +516,7 @@ class PosterRenderer {
       }
     }
 
+    paintHighlight();
     _paintRoutes(canvas, scene, strokeUnit / scale);
 
     canvas.restore();

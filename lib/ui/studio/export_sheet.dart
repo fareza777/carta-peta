@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../ads/ad_banner.dart';
+import '../../ads/ad_config.dart';
 import '../../core/format.dart';
 import '../../core/theme.dart';
 import '../../model/format_spec.dart';
@@ -32,6 +36,44 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
   double _progress = 0;
   ExportResult? _result;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    // The largest sizes are the rewarded unlock, so the ad wants to be in hand
+    // before the user taps one.
+    ref.read(adServiceProvider).preloadRewarded();
+  }
+
+  /// Sizes above the free ceiling are unlocked by watching a rewarded ad. Every
+  /// size at or below it stays free, so the app is fully usable without ads.
+  bool _locked(int width, int height) =>
+      (width > height ? width : height) > AdConfig.freeExportWidth &&
+      !ref.read(adServiceProvider).bigExportsUnlocked;
+
+  Future<void> _unlock() async {
+    final ads = ref.read(adServiceProvider);
+    final messenger = ScaffoldMessenger.of(context);
+    if (!ads.isReady) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('Ads are unavailable right now')));
+      return;
+    }
+    if (!ads.rewardedReady) {
+      ads.preloadRewarded();
+      messenger.showSnackBar(const SnackBar(
+          content: Text('The video is still loading - try again in a moment')));
+      return;
+    }
+    final earned = await ads.showRewarded();
+    if (!mounted) return;
+    setState(() {});
+    messenger.showSnackBar(SnackBar(
+      content: Text(earned
+          ? 'Unlocked: every resolution, for the rest of this session'
+          : 'Watch the whole video to unlock the largest sizes'),
+    ));
+  }
 
   /// Default to the first option that clears 4K, which is the sweet spot
   /// between print quality and how long a phone takes to render.
@@ -197,14 +239,17 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
     final height = format.heightFor(width);
     final selected = i == _index;
     final mp = format.megapixelsFor(width);
+    final locked = _locked(width, height);
     return GestureDetector(
-      onTap: () => setState(() {
-        _index = i;
-        if (_format == ExportFormat.jpeg &&
-            width * height > PosterExporter.jpegMaxPixels) {
-          _format = ExportFormat.png;
-        }
-      }),
+      onTap: locked
+          ? _unlock
+          : () => setState(() {
+                _index = i;
+                if (_format == ExportFormat.jpeg &&
+                    width * height > PosterExporter.jpegMaxPixels) {
+                  _format = ExportFormat.png;
+                }
+              }),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
@@ -216,9 +261,11 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
         child: Row(
           children: [
             Icon(
-              selected ? Icons.radio_button_checked : Icons.radio_button_off,
+              locked
+                  ? Icons.lock_outline
+                  : (selected ? Icons.radio_button_checked : Icons.radio_button_off),
               size: 18,
-              color: selected ? Shade.accent : Shade.textFaint,
+              color: selected && !locked ? Shade.accent : Shade.textFaint,
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -233,7 +280,7 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
-                resolutionTier(width, height),
+                locked ? 'WATCH AD' : resolutionTier(width, height),
                 style: const TextStyle(
                     color: Shade.accent, fontSize: 10.5, fontWeight: FontWeight.w600),
               ),
@@ -253,6 +300,10 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
     final format = state.format;
     final width = format.exportWidths[_index.clamp(0, format.exportWidths.length - 1)];
     final height = format.heightFor(width);
+    if (_locked(width, height)) {
+      await _unlock();
+      return;
+    }
 
     setState(() {
       _busy = true;
@@ -276,6 +327,10 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
       setState(() => _result = result);
       if (share) {
         await PosterExporter.share(result.filePath, state.place?.name ?? 'CARTA');
+      } else {
+        // Only on the save path: an interstitial on top of the system share
+        // sheet would land while the user is mid-task.
+        unawaited(ref.read(adServiceProvider).onExportFinished());
       }
     } catch (e) {
       if (mounted) setState(() => _error = '$e');

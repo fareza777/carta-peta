@@ -1,3 +1,4 @@
+import 'area_boundary.dart';
 import 'map_style.dart';
 import 'place.dart';
 import 'poster_config.dart';
@@ -12,6 +13,9 @@ class Design {
   final PosterConfig poster;
   final String formatId;
   final List<RouteTrack> routes;
+
+  /// The area lifted out of its surroundings, when the design has one.
+  final AreaBoundary? highlight;
   final double zoom;
   final bool favorite;
   final DateTime createdAt;
@@ -30,6 +34,7 @@ class Design {
     required this.createdAt,
     required this.updatedAt,
     this.routes = const [],
+    this.highlight,
     this.zoom = 1.0,
     this.favorite = false,
     this.thumbnail,
@@ -43,6 +48,8 @@ class Design {
     String? formatId,
     List<RouteTrack>? routes,
     bool clearRoutes = false,
+    AreaBoundary? highlight,
+    bool clearHighlight = false,
     double? zoom,
     bool? favorite,
     DateTime? updatedAt,
@@ -56,6 +63,7 @@ class Design {
         poster: poster ?? this.poster,
         formatId: formatId ?? this.formatId,
         routes: clearRoutes ? const [] : (routes ?? this.routes),
+        highlight: clearHighlight ? null : (highlight ?? this.highlight),
         zoom: zoom ?? this.zoom,
         favorite: favorite ?? this.favorite,
         createdAt: createdAt,
@@ -71,6 +79,7 @@ class Design {
         'poster': poster.toJson(),
         'fmt': formatId,
         if (routes.isNotEmpty) 'routes': routes.map((r) => r.toJson()).toList(),
+        if (highlight != null) 'hl': highlight!.toJson(),
         'z': zoom,
         'fav': favorite,
         'ca': createdAt.millisecondsSinceEpoch,
@@ -102,6 +111,9 @@ class Design {
         poster: PosterConfig.fromJson(Map<String, dynamic>.from(j['poster'] as Map)),
         formatId: j['fmt'] as String? ?? 'poster23',
         routes: _readRoutes(j),
+        highlight: j['hl'] == null
+            ? null
+            : AreaBoundary.fromJson(Map<String, dynamic>.from(j['hl'] as Map)),
         zoom: (j['z'] as num?)?.toDouble() ?? 1.0,
         favorite: j['fav'] as bool? ?? false,
         createdAt: DateTime.fromMillisecondsSinceEpoch(j['ca'] as int),

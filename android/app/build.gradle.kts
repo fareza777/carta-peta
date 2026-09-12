@@ -22,6 +22,14 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // AdMob application id. Google's public test id is the default so a
+        // development build can never serve real ads against the real account,
+        // which is what gets an AdMob account suspended. Pass the real one with
+        // -PadmobAppId=ca-app-pub-XXXXXXXX~YYYYYYYY when building for release.
+        manifestPlaceholders["admobAppId"] =
+            (project.findProperty("admobAppId") as String?)
+                ?: "ca-app-pub-3940256099942544~3347511713"
     }
 
     buildTypes {

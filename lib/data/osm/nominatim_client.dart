@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../core/geo.dart';
+import '../../model/area_boundary.dart';
 import '../../model/place.dart';
 
 /// Thin Nominatim wrapper. Nominatim's usage policy requires an identifying
@@ -45,6 +46,46 @@ class NominatimClient {
     }
     final list = jsonDecode(utf8.decode(res.bodyBytes)) as List<dynamic>;
     return list.map(_toPlace).whereType<PlaceRef>().toList();
+  }
+
+  /// Fetches the outline of a place that has one. Kept separate from [search]
+  /// so an ordinary search never pays for polygon geometry it will not draw.
+  Future<AreaBoundary?> boundaryOf(PlaceRef place) async {
+    // A curated place, or one restored from a design saved before OSM ids were
+    // kept, carries no id. Looking the name up again is cheaper than making
+    // the user search for a place they are already looking at.
+    var ref = place.osmRef;
+    if (ref == null) {
+      final query = place.context.isEmpty
+          ? place.name
+          : '${place.name}, ${place.context}';
+      try {
+        final hits = await search(query, limit: 1);
+        ref = hits.isEmpty ? null : hits.first.osmRef;
+      } on Exception {
+        return null;
+      }
+      if (ref == null) return null;
+    }
+    await _throttle();
+    final uri = Uri.https(_base, '/lookup', {
+      'osm_ids': ref,
+      'format': 'jsonv2',
+      'polygon_geojson': '1',
+      'accept-language': 'en',
+    });
+    try {
+      final res = await _client
+          .get(uri, headers: const {'User-Agent': _userAgent, 'Accept': 'application/json'})
+          .timeout(const Duration(seconds: 25));
+      if (res.statusCode != 200) return null;
+      final list = jsonDecode(utf8.decode(res.bodyBytes));
+      if (list is! List || list.isEmpty) return null;
+      final entry = Map<String, dynamic>.from(list.first as Map);
+      return AreaBoundary.fromGeoJson(place.name, entry['geojson']);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<PlaceRef?> reverse(LatLng point) async {
@@ -103,6 +144,13 @@ class NominatimClient {
       country: country,
       centre: LatLng(lat, lon),
       category: j['type'] as String?,
+      osmType: switch (j['osm_type']) {
+        'relation' => 'R',
+        'way' => 'W',
+        'node' => 'N',
+        _ => null,
+      },
+      osmId: (j['osm_id'] as num?)?.toInt(),
     );
   }
 
