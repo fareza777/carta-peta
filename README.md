@@ -24,7 +24,7 @@ OpenStreetMap, render 100% di perangkat, tanpa backend, tanpa API key, tanpa LLM
 | Bentuk & bingkai | Full bleed, persegi, lingkaran, rounded, arch + 5 gaya border |
 | Mode wallpaper | Rasio 9:19.5 dan 9:16, full bleed |
 | Route Art | Beberapa GPX sekaligus, warna berbeda per trek, gradasi menurut elevasi, profil elevasi di poster |
-| Highlight wilayah | Ambil batas resmi sebuah kelurahan/desa/kecamatan dari OSM, redupkan sekelilingnya, dan jadikan namanya judul poster |
+| Highlight wilayah | Ambil batas resmi sebuah RW/kelurahan/kecamatan/kota dari OSM, redupkan sekelilingnya, dan jadikan namanya judul poster |
 | Rute rumah→kantor | Rute jalan sungguhan antara dua tempat (mobil/sepeda/jalan kaki) lewat OSRM publik; jarak & durasi otomatis masuk poster |
 | Home & Work tersimpan | Dua titik favorit diingat, jadi poster komute cukup dua ketukan |
 | Preview realtime | Semua perubahan langsung terlihat, pinch-zoom & geser |
@@ -179,9 +179,14 @@ besar dari jendela saat ini, supaya outline tidak terpotong. Terverifikasi denga
 data sungguhan: Kelurahan Tebet Barat, Jakarta — relation 7152610, 69 titik,
 1,06 × 2,13 km, radius yang disarankan 1438 m.
 
-**Catatan RT/RW.** OSM praktis tidak memetakan RT/RW. Yang ada dan rapi adalah
-kelurahan/desa, kecamatan, kota, dan provinsi — highlight bekerja untuk apa pun
-yang dikenal OSM, dan bilang terus terang kalau sebuah tempat tidak punya batas.
+**RT/RW ternyata ada.** Di Jakarta, RW dipetakan sebagai relation administratif
+lengkap dengan poligonnya — "RW 01, Tebet Barat" adalah relation 7152617, 32
+titik, 555 × 674 m, dan sudah dirender jadi poster. Jadi highlight bekerja
+sampai level RW di daerah yang pemetaannya rapi; di daerah lain kelurahan,
+kecamatan dan kota tetap tersedia, dan app bilang terus terang kalau sebuah
+tempat memang tidak punya batas. Karena "RW 01" sendirian bukan judul yang
+berguna, nama kelurahannya dilipat ke dalam judul secara otomatis →
+**"RW 01 Tebet Barat"**.
 
 **Rute jalan sungguhan.** `osrm_client` memakai instance OSRM publik milik
 FOSSGIS (`routing.openstreetmap.de`): gratis, tanpa akun, tanpa API key — batasan
@@ -302,8 +307,9 @@ Application ID saat ini: `studio.carta.mapart`.
   itu butuh seluruh bitmap di memori. PNG dan PDF tidak punya batas ini.
 - Kontur butuh unduhan tile DEM sekali per lokasi; daerah yang sangat datar akan
   melaporkan bahwa tidak ada kontur yang berarti.
-- Highlight wilayah bergantung pada batas yang ada di OSM. Alamat tunggal dan
-  POI tidak punya poligon, dan app mengatakannya alih-alih menebak.
+- Highlight wilayah bergantung pada batas yang ada di OSM. Alamat tunggal, POI,
+  dan stasiun tidak punya poligon, dan app mengatakannya alih-alih menebak.
+  Cakupan RT/RW berbeda-beda per daerah: Jakarta rapi, kota lain belum tentu.
 - Rute memakai server OSRM publik bersama. Kalau sedang sibuk atau tidak ada
   jalan yang menghubungkan (misalnya menyeberang laut dengan mode mobil), app
   menampilkan alasannya.

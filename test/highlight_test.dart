@@ -19,6 +19,7 @@ import 'package:flutter_test/flutter_test.dart';
 const _black = Color(0xFF000000);
 const _white = Color(0xFFFFFFFF);
 const _amber = Color(0xFFFFC400);
+const _green = Color(0xFF00FF00);
 
 /// ~3 km across, so stroke widths behave like a normal city capture.
 const _window = MapWindow(0.5, 0.5, 7.5e-5);
@@ -43,15 +44,22 @@ MapDataSet _grid() {
   );
 }
 
-MapStyle _style({double dim = 0.8, double tint = 0, double outline = 0}) => MapStyle(
+MapStyle _style({
+  double dim = 0.8,
+  double tint = 0,
+  double outline = 0,
+  Color? highlightColor = _amber,
+}) =>
+    MapStyle(
       id: 'test',
       name: 'Test',
       background: _black,
       textColor: _white,
-      accentColor: _amber,
+      accentColor: _green,
       highlightDim: dim,
       highlightTint: tint,
       highlightWidth: outline,
+      highlightColor: highlightColor,
       layers: const {
         LayerId.roadMajor: LayerStyle(stroke: _white, width: 24),
       },
@@ -251,6 +259,29 @@ void main() {
         }
       }
       expect(sawAmber, isTrue, reason: 'expected the amber outline on the ring');
+    });
+
+    test('an unset highlight colour falls back to the text colour', () async {
+      const size = 500;
+      final px = await _pixels(
+        _scene(_grid(), _style(dim: 0.95, outline: 7, highlightColor: null),
+            highlight: _centreSquare()),
+        size,
+      );
+      // White ink on a dimmed map: the ring must be the brightest thing along
+      // the edge, and never the accent green.
+      final edge = (size * 0.25).round();
+      var sawWhite = false, sawGreen = false;
+      for (var y = (size * 0.3).round(); y < (size * 0.7).round(); y++) {
+        for (var x = edge - 5; x <= edge + 5; x++) {
+          final rgb = _at(px, size, x, y);
+          final r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+          if (r > 200 && g > 200 && b > 200) sawWhite = true;
+          if (g > 180 && r < 90 && b < 90) sawGreen = true;
+        }
+      }
+      expect(sawWhite, isTrue, reason: 'expected the text colour on the ring');
+      expect(sawGreen, isFalse, reason: 'the accent must not be used');
     });
 
     test('the tint lifts the inside without touching the roads', () async {

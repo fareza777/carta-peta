@@ -53,6 +53,30 @@ String _searchHit() => jsonEncode([
       }
     ]);
 
+/// A real RW: Jakarta maps them as administrative relations, and the number
+/// alone ("RW 01") is useless as a title.
+String _rwLookup() => jsonEncode([
+      {
+        'osm_type': 'relation',
+        'osm_id': 7152617,
+        'name': 'RW 01',
+        'display_name':
+            'RW 01, Tebet Barat, Tebet, South Jakarta, Special Capital Region of Jakarta',
+        'geojson': {
+          'type': 'Polygon',
+          'coordinates': [
+            [
+              [106.8470, -6.2290],
+              [106.8520, -6.2290],
+              [106.8520, -6.2240],
+              [106.8470, -6.2240],
+              [106.8470, -6.2290],
+            ]
+          ],
+        },
+      }
+    ]);
+
 void main() {
   test('fetches the outline of a place that has one', () async {
     late Uri seen;
@@ -104,6 +128,29 @@ void main() {
     final client =
         NominatimClient(client: MockClient((_) async => http.Response('busy', 503)));
     expect(await client.boundaryOf(_tebet), isNull);
+  });
+
+  test('an RW is titled with the kelurahan it sits in', () async {
+    final client = NominatimClient(
+        client: MockClient((_) async => http.Response(_rwLookup(), 200)));
+    const rw = PlaceRef(
+      name: 'RW 01',
+      context: 'Jakarta, Indonesia',
+      country: 'Indonesia',
+      centre: LatLng(-6.2268, 106.8495),
+      osmType: 'R',
+      osmId: 7152617,
+    );
+    final area = await client.boundaryOf(rw);
+    expect(area!.name, 'RW 01 Tebet Barat');
+  });
+
+  test('an ordinary place keeps its own name', () async {
+    final client = NominatimClient(
+        client: MockClient((_) async => http.Response(_lookup(), 200)));
+    final area = await client.boundaryOf(_tebet);
+    expect(area!.name, 'Tebet Barat',
+        reason: 'only RT/RW codes need their parent folded in');
   });
 
   test('search keeps the OSM identity so a boundary can be fetched later', () async {

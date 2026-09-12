@@ -313,7 +313,9 @@ class MapStyle {
   /// Outline width in poster units.
   final double highlightWidth;
 
-  /// Outline and tint colour. Null falls back to the accent.
+  /// Outline and tint colour. Null falls back to the text colour, which is the
+  /// one colour in a style guaranteed to carry against its background - an
+  /// accent can be a soft gold that vanishes on pale paper.
   final Color? highlightColor;
 
   final Color routeColor;
@@ -352,9 +354,9 @@ class MapStyle {
     this.labelColor,
     this.showLabels = false,
     this.grade = ColorGrade.none,
-    this.highlightDim = 0.55,
+    this.highlightDim = 0.72,
     this.highlightTint = 0.12,
-    this.highlightWidth = 2.6,
+    this.highlightWidth = 3.6,
     this.highlightColor,
     this.routeColor = const Color(0xFFFF4D4D),
     this.routeColorEnd,
@@ -499,9 +501,9 @@ class MapStyle {
       grade: j['gd'] == null
           ? ColorGrade.none
           : ColorGrade.fromJson(Map<String, dynamic>.from(j['gd'] as Map)),
-      highlightDim: (j['hd'] as num?)?.toDouble() ?? 0.55,
+      highlightDim: (j['hd'] as num?)?.toDouble() ?? 0.72,
       highlightTint: (j['ht'] as num?)?.toDouble() ?? 0.12,
-      highlightWidth: (j['hw'] as num?)?.toDouble() ?? 2.6,
+      highlightWidth: (j['hw'] as num?)?.toDouble() ?? 3.6,
       highlightColor: j['hlc'] == null ? null : Color(j['hlc'] as int),
       routeColor: Color(j['rc'] as int? ?? 0xFFFF4D4D),
       routeColorEnd: j['rce'] == null ? null : Color(j['rce'] as int),

@@ -438,7 +438,7 @@ class PosterRenderer {
     void paintHighlight() {
       final ring = scene.highlightPath;
       if (ring == null) return;
-      final colour = style.highlightColor ?? style.accentColor;
+      final colour = style.highlightColor ?? style.textColor;
       final dim = style.highlightDim.clamp(0.0, 1.0);
       if (dim > 0.01) {
         // The visible slice of window space, recovered from the transform so

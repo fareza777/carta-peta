@@ -72,6 +72,7 @@ class NominatimClient {
       'osm_ids': ref,
       'format': 'jsonv2',
       'polygon_geojson': '1',
+      'addressdetails': '1',
       'accept-language': 'en',
     });
     try {
@@ -82,7 +83,7 @@ class NominatimClient {
       final list = jsonDecode(utf8.decode(res.bodyBytes));
       if (list is! List || list.isEmpty) return null;
       final entry = Map<String, dynamic>.from(list.first as Map);
-      return AreaBoundary.fromGeoJson(place.name, entry['geojson']);
+      return AreaBoundary.fromGeoJson(_boundaryLabel(place.name, entry), entry['geojson']);
     } catch (_) {
       return null;
     }
@@ -108,6 +109,27 @@ class NominatimClient {
     } catch (_) {
       return null;
     }
+  }
+
+  /// An Indonesian RT/RW number means nothing on its own - "RW 01" could be
+  /// any of thousands - so the parent locality is folded in, which is also what
+  /// makes a good poster title: "RW 01 Tebet Barat".
+  static final RegExp _neighbourhoodCode =
+      RegExp(r'^(RT|RW)[\s.]*\d+$', caseSensitive: false);
+
+  static String _boundaryLabel(String fallback, Map<String, dynamic> entry) {
+    final name = (entry['name'] as String?)?.trim();
+    final base = (name == null || name.isEmpty) ? fallback : name;
+    if (!_neighbourhoodCode.hasMatch(base)) return base;
+    final parts = ((entry['display_name'] as String?) ?? '')
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    for (final part in parts.skip(1)) {
+      if (part != base && !_neighbourhoodCode.hasMatch(part)) return '$base $part';
+    }
+    return base;
   }
 
   PlaceRef? _toPlace(dynamic raw) {
