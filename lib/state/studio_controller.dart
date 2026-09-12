@@ -565,11 +565,12 @@ class StudioController extends StateNotifier<StudioState> {
     }
 
     _push('highlight');
-    // The captured window is sized for a search pin, not for a whole
-    // neighbourhood, so an outline that reaches past it has to widen the
-    // capture or it would be drawn clipped.
+    // The captured window is sized for a search pin, not for the area itself:
+    // too small and the outline is clipped, too large and an RW ends up a
+    // postage stamp in the middle of the poster. Either way it is reframed to
+    // the area, which is the whole point of highlighting one.
     final needed = area.suggestedRadius;
-    final grow = needed > state.radiusMetres * 1.02;
+    final refit = (needed - state.radiusMetres).abs() > state.radiusMetres * 0.15;
     final poster = state.poster.title.trim().isEmpty
         ? state.poster.copyWith(title: area.name)
         : state.poster;
@@ -586,7 +587,7 @@ class StudioController extends StateNotifier<StudioState> {
         osmType: place.osmType,
         osmId: place.osmId,
       ),
-      radiusMetres: grow ? needed : state.radiusMetres,
+      radiusMetres: refit ? needed : state.radiusMetres,
       zoom: 1.0,
       pan: Offset.zero,
       savedToLibrary: false,
