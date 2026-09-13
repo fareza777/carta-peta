@@ -18,7 +18,8 @@ class AppLinks {
 
   /// Required by Google Play for any app that shows ads. Replace with the
   /// real page before publishing; it is deliberately one constant.
-  static const String privacyPolicy = 'https://carta.studio/privacy';
+  static const String privacyPolicy =
+      'https://fareza777.github.io/carta-peta/privacy-policy.html';
 
   static const String supportEmail = 'support@carta.studio';
 

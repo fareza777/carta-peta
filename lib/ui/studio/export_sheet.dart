@@ -42,13 +42,15 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
     super.initState();
     // The largest sizes are the rewarded unlock, so the ad wants to be in hand
     // before the user taps one.
-    ref.read(adServiceProvider).preloadRewarded();
+    final ads = ref.read(adServiceProvider);
+    if (!ads.adsRemoved) ads.preloadRewarded();
   }
 
   /// Sizes above the free ceiling are unlocked by watching a rewarded ad. Every
   /// size at or below it stays free, so the app is fully usable without ads.
   bool _locked(int width, int height) =>
       (width > height ? width : height) > AdConfig.freeExportWidth &&
+      !ref.read(adServiceProvider).adsRemoved &&
       !ref.read(adServiceProvider).bigExportsUnlocked;
 
   Future<void> _unlock() async {
@@ -56,23 +58,31 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
     final messenger = ScaffoldMessenger.of(context);
     if (!ads.isReady) {
       messenger.showSnackBar(
-          const SnackBar(content: Text('Ads are unavailable right now')));
+        const SnackBar(content: Text('Ads are unavailable right now')),
+      );
       return;
     }
     if (!ads.rewardedReady) {
       ads.preloadRewarded();
-      messenger.showSnackBar(const SnackBar(
-          content: Text('The video is still loading - try again in a moment')));
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('The video is still loading - try again in a moment'),
+        ),
+      );
       return;
     }
     final earned = await ads.showRewarded();
     if (!mounted) return;
     setState(() {});
-    messenger.showSnackBar(SnackBar(
-      content: Text(earned
-          ? 'Unlocked: every resolution, for the rest of this session'
-          : 'Watch the whole video to unlock the largest sizes'),
-    ));
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          earned
+              ? 'Unlocked: every resolution, for the rest of this session'
+              : 'Watch the whole video to unlock the largest sizes',
+        ),
+      ),
+    );
   }
 
   /// Default to the first option that clears 4K, which is the sweet spot
@@ -108,12 +118,22 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
             children: [
               Row(
                 children: [
-                  const Text('Export',
-                      style: TextStyle(
-                          color: Shade.text, fontSize: 19, fontWeight: FontWeight.w600)),
+                  const Text(
+                    'Export',
+                    style: TextStyle(
+                      color: Shade.text,
+                      fontSize: 19,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                   const Spacer(),
-                  Text('${format.name}  ${format.hint}',
-                      style: const TextStyle(color: Shade.textFaint, fontSize: 12.5)),
+                  Text(
+                    '${format.name}  ${format.hint}',
+                    style: const TextStyle(
+                      color: Shade.textFaint,
+                      fontSize: 12.5,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 14),
@@ -136,19 +156,22 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
               Text(
                 _format == ExportFormat.pdf
                     ? 'Page ${(width / PosterExporter.printDpi).toStringAsFixed(1)} x '
-                        '${(height / PosterExporter.printDpi).toStringAsFixed(1)} inch '
-                        'at ${PosterExporter.printDpi.round()} DPI'
+                          '${(height / PosterExporter.printDpi).toStringAsFixed(1)} inch '
+                          'at ${PosterExporter.printDpi.round()} DPI'
                     : _format.hint,
                 style: const TextStyle(color: Shade.textFaint, fontSize: 11.5),
               ),
               const SizedBox(height: 16),
-              for (var i = 0; i < widths.length; i++) _option(format, widths[i], i),
+              for (var i = 0; i < widths.length; i++)
+                _option(format, widths[i], i),
               const SizedBox(height: 14),
               if (_error != null)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(_error!,
-                      style: const TextStyle(color: Shade.danger, fontSize: 12.5)),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(color: Shade.danger, fontSize: 12.5),
+                  ),
                 ),
               if (_result != null)
                 Padding(
@@ -160,18 +183,23 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
                             ? Icons.check_circle_outline
                             : Icons.info_outline,
                         size: 17,
-                        color: _result!.savedToGallery ? Shade.accent : Shade.textDim,
+                        color: _result!.savedToGallery
+                            ? Shade.accent
+                            : Shade.textDim,
                       ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           _result!.savedToGallery
                               ? 'Saved to your gallery (CARTA album) - '
-                                  '${formatBytes(_result!.bytes)}'
+                                    '${formatBytes(_result!.bytes)}'
                               : '${_result!.format.label} written to app storage - '
-                                  '${formatBytes(_result!.bytes)}. Use Share to keep it.',
+                                    '${formatBytes(_result!.bytes)}. Use Share to keep it.',
                           style: const TextStyle(
-                              color: Shade.textDim, fontSize: 12, height: 1.35),
+                            color: Shade.textDim,
+                            fontSize: 12,
+                            height: 1.35,
+                          ),
                         ),
                       ),
                     ],
@@ -189,13 +217,18 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
                           value: _progress <= 0 ? null : _progress,
                           minHeight: 5,
                           backgroundColor: Shade.surfaceHi,
-                          valueColor: const AlwaysStoppedAnimation(Shade.accent),
+                          valueColor: const AlwaysStoppedAnimation(
+                            Shade.accent,
+                          ),
                         ),
                       ),
                       const SizedBox(height: 7),
                       Text(
                         'Rendering ${(_progress * 100).round()}%  -  keep the app open',
-                        style: const TextStyle(color: Shade.textDim, fontSize: 12),
+                        style: const TextStyle(
+                          color: Shade.textDim,
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ),
@@ -226,7 +259,11 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
               const Text(
                 'Every export carries the OpenStreetMap credit required by the ODbL '
                 'licence.',
-                style: TextStyle(color: Shade.textFaint, fontSize: 11, height: 1.4),
+                style: TextStyle(
+                  color: Shade.textFaint,
+                  fontSize: 11,
+                  height: 1.4,
+                ),
               ),
             ],
           ),
@@ -244,12 +281,12 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
       onTap: locked
           ? _unlock
           : () => setState(() {
-                _index = i;
-                if (_format == ExportFormat.jpeg &&
-                    width * height > PosterExporter.jpegMaxPixels) {
-                  _format = ExportFormat.png;
-                }
-              }),
+              _index = i;
+              if (_format == ExportFormat.jpeg &&
+                  width * height > PosterExporter.jpegMaxPixels) {
+                _format = ExportFormat.png;
+              }
+            }),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
@@ -263,15 +300,22 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
             Icon(
               locked
                   ? Icons.lock_outline
-                  : (selected ? Icons.radio_button_checked : Icons.radio_button_off),
+                  : (selected
+                        ? Icons.radio_button_checked
+                        : Icons.radio_button_off),
               size: 18,
               color: selected && !locked ? Shade.accent : Shade.textFaint,
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text('$width x $height',
-                  style: const TextStyle(
-                      color: Shade.text, fontSize: 14.5, fontWeight: FontWeight.w600)),
+              child: Text(
+                '$width x $height',
+                style: const TextStyle(
+                  color: Shade.text,
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -282,12 +326,17 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
               child: Text(
                 locked ? 'WATCH AD' : resolutionTier(width, height),
                 style: const TextStyle(
-                    color: Shade.accent, fontSize: 10.5, fontWeight: FontWeight.w600),
+                  color: Shade.accent,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
             const SizedBox(width: 8),
-            Text('${mp.toStringAsFixed(1)} MP',
-                style: const TextStyle(color: Shade.textFaint, fontSize: 11.5)),
+            Text(
+              '${mp.toStringAsFixed(1)} MP',
+              style: const TextStyle(color: Shade.textFaint, fontSize: 11.5),
+            ),
           ],
         ),
       ),
@@ -298,7 +347,8 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
     final state = ref.read(studioControllerProvider);
     if (!state.hasArtwork) return;
     final format = state.format;
-    final width = format.exportWidths[_index.clamp(0, format.exportWidths.length - 1)];
+    final width =
+        format.exportWidths[_index.clamp(0, format.exportWidths.length - 1)];
     final height = format.heightFor(width);
     if (_locked(width, height)) {
       await _unlock();
@@ -326,7 +376,10 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
       if (!mounted) return;
       setState(() => _result = result);
       if (share) {
-        await PosterExporter.share(result.filePath, state.place?.name ?? 'CARTA');
+        await PosterExporter.share(
+          result.filePath,
+          state.place?.name ?? 'CARTA',
+        );
       } else {
         // Only on the save path: an interstitial on top of the system share
         // sheet would land while the user is mid-task.

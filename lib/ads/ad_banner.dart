@@ -37,6 +37,7 @@ class _AdBannerState extends ConsumerState<AdBanner> {
 
   Future<void> _load() async {
     if (!AdConfig.supported) return;
+    if (ref.read(adServiceProvider).adsRemoved) return;
     final width = MediaQuery.of(context).size.width.truncate();
     // Initialising the ads SDK happens in the background at launch, so the
     // banner waits for it rather than sampling a flag that is not set yet.

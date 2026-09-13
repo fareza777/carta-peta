@@ -45,8 +45,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await _refresh();
     if (mounted) {
       setState(() => _busy = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Offline map data cleared')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Offline map data cleared')));
     }
   }
 
@@ -54,14 +55,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final library = ref.watch(libraryControllerProvider);
     final designs = library.designs.length;
+    final purchase = ref.watch(purchaseServiceProvider);
 
     return Scaffold(
       backgroundColor: Shade.bg,
       appBar: AppBar(
         backgroundColor: Shade.bg,
         surfaceTintColor: Colors.transparent,
-        title: const Text('Settings',
-            style: TextStyle(color: Shade.text, fontSize: 17, fontWeight: FontWeight.w600)),
+        title: const Text(
+          'Settings',
+          style: TextStyle(
+            color: Shade.text,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 40),
@@ -81,7 +89,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               'Downloaded map and terrain data lets you restyle and re-export a '
               'place with no connection. It is capped at about 260 MB and the '
               'oldest captures are dropped first.',
-              style: TextStyle(color: Shade.textFaint, fontSize: 12, height: 1.45),
+              style: TextStyle(
+                color: Shade.textFaint,
+                fontSize: 12,
+                height: 1.45,
+              ),
             ),
           ),
           Padding(
@@ -95,6 +107,93 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           const SectionLabel('Library'),
           _Row(label: 'Saved designs', value: '$designs'),
           _Row(label: 'Favourites', value: '${library.favouriteCount}'),
+          const SectionLabel('Ad-free studio'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 2, 20, 8),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Shade.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Shade.line),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.auto_awesome,
+                        color: Shade.accent,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          purchase.adsRemoved
+                              ? 'Remove ads is active'
+                              : 'Remove ads',
+                          style: const TextStyle(
+                            color: Shade.text,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (!purchase.adsRemoved)
+                        Text(
+                          purchase.product?.price ?? '\$4.99',
+                          style: const TextStyle(
+                            color: Shade.accent,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    purchase.adsRemoved
+                        ? 'All banners, interstitials and rewarded prompts are hidden. '
+                              'The highest export sizes are unlocked.'
+                        : 'One purchase removes every ad and unlocks the highest export sizes. '
+                              'Your artwork stays uninterrupted.',
+                    style: const TextStyle(
+                      color: Shade.textFaint,
+                      fontSize: 12,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (purchase.adsRemoved)
+                    GhostButton(
+                      label: 'Restore purchase',
+                      icon: Icons.restore,
+                      onPressed: purchase.busy ? null : purchase.restore,
+                    )
+                  else
+                    PrimaryButton(
+                      label: purchase.busy
+                          ? 'Waiting for Google Play...'
+                          : 'Remove ads',
+                      icon: Icons.workspace_premium_outlined,
+                      busy: purchase.busy,
+                      onPressed: purchase.busy ? null : purchase.buyRemoveAds,
+                    ),
+                  if (purchase.error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      purchase.error!,
+                      style: const TextStyle(
+                        color: Shade.danger,
+                        fontSize: 11.5,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
           const SectionLabel('Language'),
           for (final language in AppLanguage.values)
             RadioListTile<AppLanguage>(
@@ -106,8 +205,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 if (v != null) ref.read(languageProvider.notifier).set(v);
               },
               activeColor: Shade.accent,
-              title: Text(language.label,
-                  style: const TextStyle(color: Shade.text, fontSize: 14.5)),
+              title: Text(
+                language.label,
+                style: const TextStyle(color: Shade.text, fontSize: 14.5),
+              ),
             ),
           const SectionLabel('Data & licences'),
           const Padding(
@@ -122,7 +223,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               'Bundled typefaces: Inter, Playfair Display, Cormorant Garamond, '
               'Cinzel, Oswald, Montserrat, Josefin Sans, Bebas Neue and Space '
               'Mono, all under the SIL Open Font License 1.1.',
-              style: TextStyle(color: Shade.textFaint, fontSize: 12, height: 1.55),
+              style: TextStyle(
+                color: Shade.textFaint,
+                fontSize: 12,
+                height: 1.55,
+              ),
             ),
           ),
           const SectionLabel('About'),
@@ -136,8 +241,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _TapRow(
             label: 'Rate on Google Play',
             value: 'Thank you',
-            onTap: () => openLink(context, AppLinks.playMarket,
-                fallback: AppLinks.playListing),
+            onTap: () => openLink(
+              context,
+              AppLinks.playMarket,
+              fallback: AppLinks.playListing,
+            ),
           ),
           _TapRow(
             label: 'Share ${AppLinks.appName}',
@@ -156,7 +264,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 }
 
 class _TapRow extends StatelessWidget {
-  const _TapRow({required this.label, required this.value, required this.onTap});
+  const _TapRow({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
 
   final String label;
   final String value;
@@ -164,22 +276,26 @@ class _TapRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 13, 14, 13),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(label,
-                    style: const TextStyle(color: Shade.text, fontSize: 14.5)),
-              ),
-              Text(value,
-                  style: const TextStyle(color: Shade.textDim, fontSize: 13.5)),
-              const Icon(Icons.chevron_right, size: 18, color: Shade.textFaint),
-            ],
+    onTap: onTap,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(20, 13, 14, 13),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(color: Shade.text, fontSize: 14.5),
+            ),
           ),
-        ),
-      );
+          Text(
+            value,
+            style: const TextStyle(color: Shade.textDim, fontSize: 13.5),
+          ),
+          const Icon(Icons.chevron_right, size: 18, color: Shade.textFaint),
+        ],
+      ),
+    ),
+  );
 }
 
 class _Row extends StatelessWidget {
@@ -195,9 +311,15 @@ class _Row extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(label, style: const TextStyle(color: Shade.text, fontSize: 14.5)),
+            child: Text(
+              label,
+              style: const TextStyle(color: Shade.text, fontSize: 14.5),
+            ),
           ),
-          Text(value, style: const TextStyle(color: Shade.textDim, fontSize: 13.5)),
+          Text(
+            value,
+            style: const TextStyle(color: Shade.textDim, fontSize: 13.5),
+          ),
         ],
       ),
     );

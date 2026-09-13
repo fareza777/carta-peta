@@ -10,7 +10,7 @@
         android:maxSdkVersion="28"/>
 
     <application
-        android:label="CARTA"
+        android:label="CARTA: Map Art Studio"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

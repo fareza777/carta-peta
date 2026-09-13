@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'ad_config.dart';
 
@@ -18,6 +19,7 @@ class AdService {
   final Completer<bool> _initialised = Completer<bool>();
   bool _ready = false;
   bool _consentDone = false;
+  bool _adsRemoved = false;
   int _exportCount = 0;
   DateTime _lastInterstitial = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -28,6 +30,7 @@ class AdService {
   bool _loadingRewarded = false;
 
   bool get isReady => _ready;
+  bool get adsRemoved => _adsRemoved;
 
   /// Completes with whether ads are usable at all. Widgets await this instead
   /// of sampling [isReady], which would race the background initialise.
@@ -39,6 +42,16 @@ class AdService {
 
   Future<void> initialize() async {
     if (_initialised.isCompleted) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _adsRemoved = prefs.getBool('carta_remove_ads_v1') ?? false;
+    } on Exception catch (e) {
+      debugPrint('AdService: purchase state read failed: $e');
+    }
+    if (_adsRemoved) {
+      _initialised.complete(false);
+      return;
+    }
     if (!AdConfig.supported) {
       _initialised.complete(false);
       return;
@@ -52,6 +65,23 @@ class AdService {
     } on Exception catch (e) {
       debugPrint('AdService: initialise failed: $e');
       if (!_initialised.isCompleted) _initialised.complete(false);
+    }
+  }
+
+  /// Called by the purchase stream after Google Play grants the entitlement.
+  /// Loaded ads are disposed immediately so one cannot appear after checkout.
+  Future<void> setAdsRemoved() async {
+    _adsRemoved = true;
+    _interstitial?.dispose();
+    _rewarded?.dispose();
+    _interstitial = null;
+    _rewarded = null;
+    if (!_initialised.isCompleted) _initialised.complete(false);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('carta_remove_ads_v1', true);
+    } on Exception catch (e) {
+      debugPrint('AdService: purchase state write failed: $e');
     }
   }
 
@@ -93,7 +123,12 @@ class AdService {
   // ----------------------------------------------------------- interstitial
 
   void preloadInterstitial() {
-    if (!_ready || _interstitial != null || _loadingInterstitial) return;
+    if (_adsRemoved ||
+        !_ready ||
+        _interstitial != null ||
+        _loadingInterstitial) {
+      return;
+    }
     _loadingInterstitial = true;
     InterstitialAd.load(
       adUnitId: AdConfig.interstitialUnit,
@@ -114,7 +149,7 @@ class AdService {
 
   /// Called when an export finishes. Returns true if an ad was shown.
   Future<bool> onExportFinished() async {
-    if (!_ready) return false;
+    if (_adsRemoved || !_ready) return false;
     _exportCount++;
     if (_exportCount < AdConfig.exportsBeforeInterstitial) {
       preloadInterstitial();
@@ -153,13 +188,16 @@ class AdService {
       debugPrint('AdService: interstitial show threw: $e');
       if (!shown.isCompleted) shown.complete(false);
     }
-    return shown.future.timeout(const Duration(minutes: 2), onTimeout: () => false);
+    return shown.future.timeout(
+      const Duration(minutes: 2),
+      onTimeout: () => false,
+    );
   }
 
   // --------------------------------------------------------------- rewarded
 
   void preloadRewarded() {
-    if (!_ready || _rewarded != null || _loadingRewarded) return;
+    if (_adsRemoved || !_ready || _rewarded != null || _loadingRewarded) return;
     _loadingRewarded = true;
     RewardedAd.load(
       adUnitId: AdConfig.rewardedUnit,
@@ -183,7 +221,7 @@ class AdService {
   /// Shows a rewarded ad. Returns true only when the user actually earned the
   /// reward, so a dismissed ad unlocks nothing.
   Future<bool> showRewarded() async {
-    if (!_ready) return false;
+    if (_adsRemoved || !_ready) return false;
     final ad = _rewarded;
     if (ad == null) {
       preloadRewarded();
@@ -212,8 +250,10 @@ class AdService {
       debugPrint('AdService: rewarded show threw: $e');
       if (!finished.isCompleted) finished.complete(false);
     }
-    final result = await finished.future
-        .timeout(const Duration(minutes: 4), onTimeout: () => false);
+    final result = await finished.future.timeout(
+      const Duration(minutes: 4),
+      onTimeout: () => false,
+    );
     if (result) bigExportsUnlocked = true;
     return result;
   }
