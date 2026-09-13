@@ -43,3 +43,15 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Generated local previews and Remotion build cache
+/output/carta-promo/
+/output/playstore-en-US/source/
+/output/playstore-en-US/preview.html
+/output/playstore-en-US/asset-validation.json
+/output/playstore-en-US/title.txt
+/output/playstore-en-US/short-description.txt
+/output/playstore-en-US/full-description.txt
+/output/carta-video/check-*.png
+/output/carta-video/final-frame.png
+/output/carta-video/preview.html
